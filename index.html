@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>DCA Global Compounder — Fund Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#FCFCFA;
+    -webkit-text-size-adjust:100%}
+  #root{min-height:100%}
+  #boot{font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:11px;
+    letter-spacing:.12em;text-transform:uppercase;color:#6C7C86;
+    padding:40px 22px}
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+</head>
+<body>
+<div id="root"><div id="boot">Loading ledger…</div></div>
+<noscript><div id="boot">This ledger needs JavaScript enabled.</div></noscript>
+
+<script type="text/babel" data-presets="react">
+const { useState, useMemo, useRef } = React;
+
+
+/* ═══════════════════════════════════════════════════════════════
+   DCA GLOBAL COMPOUNDER — read-only ledger.
+
+   ▼▼▼ EVERYTHING EDITABLE LIVES IN THIS ONE BLOCK ▼▼▼
+   Ping Claude with: investor, amount, date. Claude pulls positions,
+   cash, trades, conversions and daily prices from IBKR.
+
+   TRADE MERGING RULE — applies to every future update:
+   IBKR splits one order into a main fill (LSEETF) plus a fractional
+   remainder (EUIBSI, zero commission). These are ONE trade. Always
+   merge them into a single row: sum the shares, use the share-weighted
+   average price, and carry the single commission. Never list the
+   fractional fill separately.
+
+   Model (reporting currency SGD, assets priced in USD):
+     Securities USD = Σ(shares × usdPrice)
+     Fund value SGD = (Securities USD + cashUSD) × fxRate + cashSGD
+     NAV / unit      = fund value ÷ units outstanding
+     Units issued    = amount ÷ navAtEntry
+
+   FX attribution — USD is treated as a position with a cost basis:
+     avgRate  = total SGD converted ÷ total USD received
+     FX P&L   = USD acquired × (fxRate − avgRate)
+     Stock    = (USD held − USD acquired) × fxRate
+     The two sum exactly to total profit on USD assets.
+
+   Daily blocks are "YYYY-MM-DD  value", one line per trading day.
+   Append only; never rewrite past rows.
+   ═══════════════════════════════════════════════════════════════ */
+
+const FUND = {
+  name: "DCA Global Compounder",
+  currency: "SGD",
+  pricedAsOf: "2026-08-19",
+  inceptionNav: 10.0,
+
+  fxRate: 1.27746, // SGD per USD
+
+  cashSGD: 394.43,
+  cashUSD: 63.48,
+
+  // Prices and costs in USD. avgCost includes commission.
+  holdings: [
+    { ticker: "IWDA", shares: 40.3251, avgCost: 149.5681, price: 147.5600 },
+    { ticker: "EQQS", shares: 36.3982, avgCost: 94.7398, price: 92.4850 },
+    { ticker: "IGLN", shares: 40.4083, avgCost: 85.3379, price: 84.5625 },
+    { ticker: "EIMI", shares: 31.1787, avgCost: 55.3698, price: 53.7100 },
+    { ticker: "IWVL", shares: 20.9062, avgCost: 82.5764, price: 80.8900 },
+    { ticker: "BTC", shares: 30.0, avgCost: 28.5000, price: 28.6100 },
+  ],
+
+  // SGD → USD conversions. sgd is the all-in cost including commission.
+  conversions: [
+    { date: "2026-08-17", sgd: 22002.79, usd: 17221.0, rate: 1.27751 },
+    { date: "2026-08-19", sgd: 102.78, usd: 78.26, rate: 1.27770 },
+  ],
+
+  contributions: [
+    { date: "2026-08-15", person: "Q", amount: 18000, navAtEntry: 10.0, note: "Inception" },
+    { date: "2026-08-15", person: "J", amount: 4000, navAtEntry: 10.0, note: "Inception" },
+    { date: "2026-08-17", person: "Q", amount: 500, navAtEntry: 10.0, note: "Top-up" },
+  ],
+
+  trades: [
+    { date: "2026-08-17", ticker: "IWDA", side: "BUY", shares: 40.3251, price: 149.46, commission: 4.36 },
+    { date: "2026-08-17", ticker: "IGLN", side: "BUY", shares: 40.4083, price: 85.23, commission: 4.36 },
+    { date: "2026-08-17", ticker: "EIMI", side: "BUY", shares: 31.1787, price: 55.23, commission: 4.36 },
+    { date: "2026-08-17", ticker: "IWVL", side: "BUY", shares: 20.9062, price: 82.3678, commission: 4.36 },
+    { date: "2026-08-17", ticker: "EQQS", side: "BUY", shares: 36.3982, price: 94.62, commission: 4.36 },
+    { date: "2026-08-19", ticker: "BTC", side: "BUY", shares: 30.0, price: 28.50, commission: 0 },
+  ],
+
+  navDaily: `
+2026-08-15  10.0000
+2026-08-18   9.9973
+2026-08-19   9.8392
+`,
+
+  cashDaily: `
+2026-08-15  22000.00
+2026-08-18   1570.43
+2026-08-19    475.50
+`,
+
+  fxDaily: `
+2026-08-15  1.2900
+2026-08-18  1.2775
+2026-08-19  1.27746
+`,
+
+  priceDaily: {
+    IWDA: `
+2026-08-17  149.46
+2026-08-18  149.11
+2026-08-19  147.56
+`,
+    EQQS: `
+2026-08-17  94.62
+2026-08-18  94.48
+2026-08-19  92.485
+`,
+    IGLN: `
+2026-08-17  85.23
+2026-08-18  85.79
+2026-08-19  84.5625
+`,
+    EIMI: `
+2026-08-17  55.23
+2026-08-18  55.59
+2026-08-19  53.71
+`,
+    IWVL: `
+2026-08-17  82.37
+2026-08-18  82.59
+2026-08-19  80.89
+`,
+    BTC: `
+2026-08-19  28.61
+`,
+  },
+};
+
+/* ═══════════ nothing below here needs editing ═══════════ */
+
+
+
+
+const money = (n) =>
+  (n < 0 ? "−" : "") +
+  "S$" +
+  Math.abs(n).toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const usd = (n) =>
+  (n < 0 ? "−" : "") +
+  "US$" +
+  Math.abs(n).toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const plain = (n, dp = 2) =>
+  n.toLocaleString("en-SG", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+
+const pct = (n, dp = 2) => (n >= 0 ? "+" : "−") + Math.abs(n * 100).toFixed(dp) + "%";
+
+const shortDate = (s) =>
+  new Date(s + "T00:00:00").toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "2-digit" });
+
+const longDate = (s) =>
+  new Date(s + "T00:00:00").toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "numeric" });
+
+function parseSeries(block) {
+  if (!block) return [];
+  return block
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"))
+    .map((l) => {
+      const [date, v] = l.split(/\s+/);
+      return { date, value: Number(v) };
+    })
+    .filter((p) => p.date && Number.isFinite(p.value) && p.value > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function sharesAsAt(ticker, date) {
+  return FUND.trades
+    .filter((t) => t.ticker === ticker && t.date <= date)
+    .reduce((s, t) => s + (String(t.side).toUpperCase() === "SELL" ? -Math.abs(t.shares) : Math.abs(t.shares)), 0);
+}
+
+function valueAsAt(series, date) {
+  let v = null;
+  for (const p of series) {
+    if (p.date <= date) v = p.value;
+    else break;
+  }
+  return v;
+}
+
+function build() {
+  const lots = [];
+  const people = {};
+
+  [...FUND.contributions]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .forEach((c, i) => {
+      const units = c.amount / c.navAtEntry;
+      if (!people[c.person]) people[c.person] = { units: 0, net: 0, since: c.date, lots: [] };
+      people[c.person].units += units;
+      people[c.person].net += c.amount;
+      const lot = {
+        key: c.date + c.person + i,
+        date: c.date,
+        person: c.person,
+        amount: c.amount,
+        navAtEntry: c.navAtEntry,
+        units,
+        note: c.note || "",
+      };
+      people[c.person].lots.push(lot);
+      lots.push(lot);
+    });
+
+  const fx = FUND.fxRate;
+
+  // Holdings carry USD prices; SGD figures are translated at today's rate.
+  const holdings = FUND.holdings
+    .map((h) => {
+      const costUsd = h.shares * h.avgCost;
+      const valueUsd = h.shares * h.price;
+      return {
+        ...h,
+        costUsd,
+        valueUsd,
+        plUsd: valueUsd - costUsd,
+        roi: costUsd !== 0 ? (valueUsd - costUsd) / costUsd : 0,
+        valueSgd: valueUsd * fx,
+        costSgd: costUsd * fx,
+      };
+    })
+    .sort((a, b) => b.valueUsd - a.valueUsd);
+
+  const trades = [...FUND.trades].sort((a, b) => b.date.localeCompare(a.date));
+  const conversions = [...FUND.conversions].sort((a, b) => b.date.localeCompare(a.date));
+
+  const securitiesUsd = holdings.reduce((s, h) => s + h.valueUsd, 0);
+  const usdHeld = securitiesUsd + FUND.cashUSD;
+  const fundValue = usdHeld * fx + FUND.cashSGD;
+
+  // USD as a position: cost basis from the conversion log.
+  const sgdConverted = FUND.conversions.reduce((s, c) => s + c.sgd, 0);
+  const usdAcquired = FUND.conversions.reduce((s, c) => s + c.usd, 0);
+  const avgRate = usdAcquired > 0 ? sgdConverted / usdAcquired : 0;
+  const fxPl = usdAcquired > 0 ? usdAcquired * (fx - avgRate) : 0;
+  const stockPlSgd = (usdHeld - usdAcquired) * fx;
+
+  const unitsOut = lots.reduce((s, l) => s + l.units, 0);
+  const netIn = lots.reduce((s, l) => s + l.amount, 0);
+  const nav = unitsOut > 0 ? fundValue / unitsOut : 0;
+
+  const daily = parseSeries(FUND.navDaily);
+  if (nav > 0 && (!daily.length || daily[daily.length - 1].date !== FUND.pricedAsOf)) {
+    daily.push({ date: FUND.pricedAsOf, value: nav });
+  }
+
+  const enriched = daily.map((p, i) => {
+    const unitsThen = lots.filter((l) => l.date <= p.date).reduce((s, l) => s + l.units, 0);
+    const prev = i > 0 ? daily[i - 1].value : null;
+    return {
+      ...p,
+      nav: p.value,
+      units: unitsThen,
+      fundValue: unitsThen * p.value,
+      dayChange: prev ? p.value / prev - 1 : null,
+      cumulative: FUND.inceptionNav ? p.value / FUND.inceptionNav - 1 : 0,
+    };
+  });
+
+  let peak = -Infinity;
+  let maxDD = 0;
+  enriched.forEach((p) => {
+    peak = Math.max(peak, p.value);
+    p.drawdown = peak > 0 ? p.value / peak - 1 : 0;
+    maxDD = Math.min(maxDD, p.drawdown);
+  });
+
+  const prices = {};
+  Object.entries(FUND.priceDaily || {}).forEach(([t, block]) => {
+    const s = parseSeries(block);
+    const h = holdings.find((x) => x.ticker === t);
+    if (h && (!s.length || s[s.length - 1].date !== FUND.pricedAsOf)) {
+      s.push({ date: FUND.pricedAsOf, value: h.price });
+    }
+    prices[t] = s;
+  });
+
+  const fxSeries = parseSeries(FUND.fxDaily);
+  if (!fxSeries.length || fxSeries[fxSeries.length - 1].date !== FUND.pricedAsOf) {
+    fxSeries.push({ date: FUND.pricedAsOf, value: fx });
+  }
+
+  const cashSeries = parseSeries(FUND.cashDaily);
+  const cashByDate = {};
+  cashSeries.forEach((p) => (cashByDate[p.date] = p.value));
+  if (cashByDate[FUND.pricedAsOf] == null) {
+    cashByDate[FUND.pricedAsOf] = FUND.cashSGD + FUND.cashUSD * fx;
+  }
+
+  return {
+    lots,
+    people,
+    holdings,
+    trades,
+    conversions,
+    securitiesUsd,
+    usdHeld,
+    usdAcquired,
+    sgdConverted,
+    avgRate,
+    fxPl,
+    stockPlSgd,
+    fundValue,
+    unitsOut,
+    netIn,
+    nav,
+    fx,
+    daily: enriched,
+    maxDD,
+    prices,
+    fxSeries,
+    cashByDate,
+  };
+}
+
+function exportWorkbook(B, roster) {
+  const wb = XLSX.utils.book_new();
+
+  const summary = [
+    ["Fund", FUND.name],
+    ["Reporting currency", FUND.currency],
+    ["Priced as of", FUND.pricedAsOf],
+    ["Fund value SGD", B.fundValue],
+    ["Cash SGD", FUND.cashSGD],
+    ["Cash USD", FUND.cashUSD],
+    ["Securities USD", B.securitiesUsd],
+    ["USD held", B.usdHeld],
+    ["USD acquired", B.usdAcquired],
+    ["SGD converted", B.sgdConverted],
+    ["Avg acquisition rate", B.avgRate],
+    ["FX rate today", B.fx],
+    ["FX profit SGD", B.fxPl],
+    ["Stock profit SGD", B.stockPlSgd],
+    ["Capital in", B.netIn],
+    ["Total profit", B.fundValue - B.netIn],
+    ["Units outstanding", B.unitsOut],
+    ["NAV per unit", B.nav],
+    ["Return since inception", B.nav / FUND.inceptionNav - 1],
+    ["Max drawdown", B.maxDD],
+  ].map(([Field, Value]) => ({ Field, Value }));
+
+  const ownership = roster.map((r) => ({
+    Investor: r.person,
+    Units: r.units,
+    Share: r.share,
+    CapitalIn: r.net,
+    ValueNow: r.value,
+    Profit: r.pl,
+    Return: r.roi,
+    Since: r.since,
+    AvgEntryNav: r.units ? r.net / r.units : 0,
+  }));
+
+  const transactions = B.lots.map((l) => ({
+    Date: l.date,
+    Investor: l.person,
+    Amount: l.amount,
+    NavAtEntry: l.navAtEntry,
+    UnitsIssued: l.units,
+    ValueNow: l.units * B.nav,
+    Profit: l.units * B.nav - l.amount,
+    Note: l.note,
+  }));
+
+  const holdings = B.holdings.map((h) => ({
+    Ticker: h.ticker,
+    Shares: h.shares,
+    AvgCostUSD: h.avgCost,
+    PriceUSD: h.price,
+    CostUSD: h.costUsd,
+    ValueUSD: h.valueUsd,
+    ProfitUSD: h.plUsd,
+    Return: h.roi,
+    ValueSGD: h.valueSgd,
+    Weight: B.fundValue ? h.valueSgd / B.fundValue : 0,
+  }));
+
+  const trades = B.trades.map((t) => ({
+    Date: t.date,
+    Ticker: t.ticker,
+    Side: t.side,
+    Shares: Math.abs(t.shares),
+    PriceUSD: t.price,
+    ValueUSD: Math.abs(t.shares * t.price),
+    CommissionUSD: t.commission ?? "",
+  }));
+
+  const conversions = B.conversions.map((c) => ({
+    Date: c.date,
+    SGD: c.sgd,
+    USD: c.usd,
+    RateExecuted: c.rate,
+  }));
+
+  const navDaily = B.daily.map((p) => ({
+    Date: p.date,
+    NavPerUnit: p.nav,
+    DailyChange: p.dayChange ?? "",
+    CumulativeReturn: p.cumulative,
+    DrawdownFromPeak: p.drawdown,
+    UnitsOutstanding: p.units,
+    FundValueSGD: p.fundValue,
+    FxRate: valueAsAt(B.fxSeries, p.date) ?? "",
+  }));
+
+  const names = roster.map((r) => r.person);
+  const ownershipDaily = B.daily.map((p) => {
+    const row = { Date: p.date, NavPerUnit: p.nav, TotalUnits: p.units, FundValue: p.fundValue };
+    names.forEach((n) => {
+      const u = B.people[n].lots.filter((l) => l.date <= p.date).reduce((s, l) => s + l.units, 0);
+      const paid = B.people[n].lots.filter((l) => l.date <= p.date).reduce((s, l) => s + l.amount, 0);
+      row[`${n} Units`] = u;
+      row[`${n} Value`] = u * p.nav;
+      row[`${n} CapitalIn`] = paid;
+      row[`${n} Profit`] = u * p.nav - paid;
+      row[`${n} Share`] = p.units ? u / p.units : 0;
+    });
+    return row;
+  });
+
+  const tickers = Object.keys(B.prices);
+  const positionsDaily = [];
+  B.daily.forEach((d) => {
+    const rate = valueAsAt(B.fxSeries, d.date);
+    tickers.forEach((t) => {
+      const shares = sharesAsAt(t, d.date);
+      if (Math.abs(shares) < 1e-9) return;
+      const close = valueAsAt(B.prices[t] || [], d.date);
+      if (close == null) return;
+      positionsDaily.push({
+        Date: d.date,
+        Ticker: t,
+        Shares: shares,
+        CloseUSD: close,
+        MarketValueUSD: shares * close,
+        FxRate: rate ?? "",
+        MarketValueSGD: rate ? shares * close * rate : "",
+      });
+    });
+  });
+
+  const priceHistory = [];
+  Object.entries(B.prices).forEach(([ticker, series]) =>
+    series.forEach((p) => priceHistory.push({ Date: p.date, Ticker: ticker, CloseUSD: p.value }))
+  );
+  priceHistory.sort((a, b) => a.Date.localeCompare(b.Date) || a.Ticker.localeCompare(b.Ticker));
+
+  const fxHistory = B.fxSeries.map((p) => ({ Date: p.date, SgdPerUsd: p.value }));
+
+  const reconstruction = B.daily.map((d) => {
+    const rate = valueAsAt(B.fxSeries, d.date);
+    let secUsd = 0;
+    tickers.forEach((t) => {
+      const shares = sharesAsAt(t, d.date);
+      const close = valueAsAt(B.prices[t] || [], d.date);
+      if (close != null) secUsd += shares * close;
+    });
+    const cashThen = B.cashByDate[d.date] ?? "";
+    const total = typeof cashThen === "number" && rate ? secUsd * rate + cashThen : "";
+    const derived = typeof total === "number" && d.units ? total / d.units : "";
+    return {
+      Date: d.date,
+      SecuritiesUSD: secUsd,
+      FxRate: rate ?? "",
+      SecuritiesSGD: rate ? secUsd * rate : "",
+      CashSGD: cashThen,
+      FundValueSGD: total,
+      UnitsOutstanding: d.units,
+      NavDerived: derived,
+      NavRecorded: d.nav,
+      Difference: typeof derived === "number" ? derived - d.nav : "",
+    };
+  });
+
+  [
+    ["Summary", summary],
+    ["Ownership", ownership],
+    ["Transactions", transactions],
+    ["Holdings", holdings],
+    ["Trades", trades],
+    ["Conversions", conversions],
+    ["NAV daily", navDaily],
+    ["Ownership daily", ownershipDaily],
+    ["Positions daily", positionsDaily],
+    ["Price history", priceHistory],
+    ["FX history", fxHistory],
+    ["NAV reconstruction", reconstruction],
+  ].forEach(([name, rows]) => {
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{}]);
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  });
+
+  const slug = FUND.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  XLSX.writeFile(wb, `${slug}-${FUND.pricedAsOf}.xlsx`);
+}
+
+function FundLedger() {
+  const [tab, setTab] = useState("ownership");
+  const [view, setView] = useState("investors");
+  const [tradeView, setTradeView] = useState("stock");
+  const [focus, setFocus] = useState(null);
+  const [ticker, setTicker] = useState(null);
+  const B = useMemo(() => build(), []);
+
+  const roster = Object.entries(B.people)
+    .map(([person, v]) => {
+      const value = v.units * B.nav;
+      return {
+        person,
+        since: v.since,
+        units: v.units,
+        net: v.net,
+        lots: v.lots,
+        value,
+        pl: value - v.net,
+        roi: v.net !== 0 ? (value - v.net) / v.net : 0,
+        share: B.unitsOut > 0 ? v.units / B.unitsOut : 0,
+      };
+    })
+    .sort((a, b) => b.units - a.units);
+
+  const profit = B.fundValue - B.netIn;
+  const fundReturn = FUND.inceptionNav ? B.nav / FUND.inceptionNav - 1 : 0;
+  const focused = focus ? roster.find((r) => r.person === focus) : null;
+  const held = ticker ? B.holdings.find((h) => h.ticker === ticker) : null;
+
+  const investorDaily = useMemo(() => {
+    if (!focused) return [];
+    return B.daily
+      .filter((d) => d.date >= focused.since)
+      .map((d) => {
+        const u = focused.lots.filter((l) => l.date <= d.date).reduce((s, l) => s + l.units, 0);
+        const paid = focused.lots.filter((l) => l.date <= d.date).reduce((s, l) => s + l.amount, 0);
+        return { date: d.date, value: u * d.nav, cost: paid };
+      });
+  }, [focused, B]);
+
+  const goTab = (t) => {
+    setTab(t);
+    setFocus(null);
+    setTicker(null);
+  };
+
+  return (
+    <div className="fl">
+      <Styles />
+
+      <header className="fl-head">
+        <h1 className="fl-title">{FUND.name}</h1>
+        <div className="fl-plbox">
+          <div className="fl-pllabel">Profit since inception</div>
+          <div className={"fl-plvalue " + (profit >= 0 ? "pos" : "neg")}>{money(profit)}</div>
+          <div className={"fl-pldelta " + (fundReturn >= 0 ? "pos" : "neg")}>{pct(fundReturn)}</div>
+        </div>
+      </header>
+
+      <div className="fl-strip">
+        <Stat label="Fund value" value={money(B.fundValue)} />
+        <Stat label="Capital in" value={money(B.netIn)} />
+        <Stat label="NAV per unit" value={plain(B.nav, 4)} />
+        <Stat label="Units outstanding" value={plain(B.unitsOut, 4)} />
+        <Stat label="Cash" value={money(FUND.cashSGD + FUND.cashUSD * B.fx)} />
+      </div>
+
+      <SeriesChart
+        points={B.daily.map((p) => ({ date: p.date, value: p.value }))}
+        baseline={FUND.inceptionNav}
+        baselineLabel={`inception ${plain(FUND.inceptionNav, 4)}`}
+        title="NAV per unit"
+        dp={4}
+        idleRight={`max drawdown ${pct(B.maxDD)}`}
+        refValue={FUND.inceptionNav}
+      />
+
+      <nav className="fl-tabs">
+        {[
+          ["ownership", "Ownership"],
+          ["holdings", "Holdings"],
+          ["trades", "Trades"],
+        ].map(([k, label]) => (
+          <button key={k} className={"fl-tab " + (tab === k ? "on" : "")} onClick={() => goTab(k)}>
+            {label}
+          </button>
+        ))}
+        <span className="fl-tabspacer" />
+        <button className="fl-export" onClick={() => exportWorkbook(B, roster)}>
+          Export to Excel
+        </button>
+      </nav>
+
+      {tab === "ownership" && !focused && (
+        <section>
+          <div className="fl-seg">
+            <button className={"fl-segbtn " + (view === "investors" ? "on" : "")} onClick={() => setView("investors")}>
+              By investor
+            </button>
+            <button className={"fl-segbtn " + (view === "all" ? "on" : "")} onClick={() => setView("all")}>
+              All transactions
+            </button>
+          </div>
+
+          {view === "investors" ? (
+            <div className="fl-cards">
+              {roster.map((r) => (
+                <button className="fl-card" key={r.person} onClick={() => setFocus(r.person)}>
+                  <div className="fl-cardtop">
+                    <span className="fl-cardname">{r.person}</span>
+                    <span className="fl-cardshare">{(r.share * 100).toFixed(2)}%</span>
+                  </div>
+                  <div className="fl-cardvalue">{money(r.value)}</div>
+                  <div className={"fl-cardpl " + (r.pl >= 0 ? "pos" : "neg")}>
+                    {money(r.pl)} · {pct(r.roi)}
+                  </div>
+                  <div className="fl-cardmeta">
+                    {plain(r.units, 4)} units · {money(r.net)} in · since {shortDate(r.since)}
+                  </div>
+                  <div className="fl-bar">
+                    <div className="fl-barfill" style={{ width: (r.share * 100).toFixed(2) + "%" }} />
+                  </div>
+                  <div className="fl-cardgo">View transactions →</div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <LotTable lots={B.lots} nav={B.nav} showPerson onPerson={setFocus} />
+          )}
+        </section>
+      )}
+
+      {tab === "ownership" && focused && (
+        <section>
+          <button className="fl-back" onClick={() => setFocus(null)}>
+            ← All investors
+          </button>
+          <div className="fl-detailhead">
+            <h2 className="fl-detailname">{focused.person}</h2>
+            <div className="fl-detailstats">
+              <Stat label="Units held" value={plain(focused.units, 4)} />
+              <Stat label="Share of fund" value={(focused.share * 100).toFixed(2) + "%"} />
+              <Stat label="Capital in" value={money(focused.net)} />
+              <Stat label="Value now" value={money(focused.value)} />
+              <Stat label="Profit" value={money(focused.pl)} sub={pct(focused.roi)} tone={focused.pl >= 0 ? "pos" : "neg"} />
+              <Stat label="Avg entry NAV" value={plain(focused.net / focused.units, 4)} />
+            </div>
+          </div>
+
+          <SeriesChart
+            points={investorDaily.map((d) => ({ date: d.date, value: d.value }))}
+            secondary={investorDaily.map((d) => ({ date: d.date, value: d.cost }))}
+            baseline={0}
+            baselineLabel="dashed line = capital paid in"
+            title={`${focused.person} · position value`}
+            idleRight={`profit ${money(focused.pl)}  ${pct(focused.roi)}`}
+            hoverExtra={(i, p) => {
+              const c = investorDaily[i].cost;
+              const pl = p.value - c;
+              return `${shortDate(p.date)}  ${money(p.value)}  ${money(pl)}  ${pct(c ? pl / c : 0)}`;
+            }}
+          />
+
+          <LotTable lots={focused.lots} nav={B.nav} />
+        </section>
+      )}
+
+      {tab === "holdings" && !held && (
+        <section>
+          <Table
+            head={["Ticker", "Shares", "Avg cost", "Price", "Cost", "Value", "Profit", "Return", "Value SGD", "Weight"]}
+          >
+            {B.holdings.map((h) => (
+              <tr key={h.ticker}>
+                <td>
+                  <button className="fl-link" onClick={() => setTicker(h.ticker)}>
+                    {h.ticker}
+                  </button>
+                </td>
+                <td className="r n">{plain(h.shares, 4)}</td>
+                <td className="r n dim">{plain(h.avgCost, 2)}</td>
+                <td className="r n">{plain(h.price, 2)}</td>
+                <td className="r n dim">{usd(h.costUsd)}</td>
+                <td className="r n strong">{usd(h.valueUsd)}</td>
+                <td className={"r n " + (h.plUsd >= 0 ? "pos" : "neg")}>{usd(h.plUsd)}</td>
+                <td className={"r n " + (h.roi >= 0 ? "pos" : "neg")}>{pct(h.roi)}</td>
+                <td className="r n">{money(h.valueSgd)}</td>
+                <td className="r n dim">{B.fundValue ? ((h.valueSgd / B.fundValue) * 100).toFixed(1) + "%" : "—"}</td>
+              </tr>
+            ))}
+            <tr className="fl-cashrow">
+              <td className="fl-name">Cash</td>
+              <td colSpan={4} />
+              <td className="r n strong">{FUND.cashUSD ? usd(FUND.cashUSD) : "—"}</td>
+              <td colSpan={2} />
+              <td className="r n">{money(FUND.cashSGD + FUND.cashUSD * B.fx)}</td>
+              <td className="r n dim">
+                {B.fundValue ? (((FUND.cashSGD + FUND.cashUSD * B.fx) / B.fundValue) * 100).toFixed(1) + "%" : "—"}
+              </td>
+            </tr>
+            <tr className="fl-total">
+              <td>Fund value</td>
+              <td colSpan={4} />
+              <td className="r n strong">{usd(B.usdHeld)}</td>
+              <td colSpan={2} />
+              <td className="r n strong">{money(B.fundValue)}</td>
+              <td className="r n">100.0%</td>
+            </tr>
+          </Table>
+
+          <div className="fl-fx">
+            <Stat label="USD held" value={usd(B.usdHeld)} />
+            <Stat label="USD acquired" value={usd(B.usdAcquired)} />
+            <Stat label="Avg rate paid" value={B.avgRate ? plain(B.avgRate, 4) : "—"} />
+            <Stat label="Rate today" value={plain(B.fx, 4)} />
+            <Stat label="Stock profit" value={money(B.stockPlSgd)} tone={B.stockPlSgd >= 0 ? "pos" : "neg"} />
+            <Stat label="FX profit" value={money(B.fxPl)} tone={B.fxPl >= 0 ? "pos" : "neg"} />
+          </div>
+        </section>
+      )}
+
+      {tab === "holdings" && held && (
+        <section>
+          <button className="fl-back" onClick={() => setTicker(null)}>
+            ← All holdings
+          </button>
+          <div className="fl-detailhead">
+            <h2 className="fl-detailname">{held.ticker}</h2>
+            <div className="fl-detailstats">
+              <Stat label="Shares" value={plain(held.shares, 4)} />
+              <Stat label="Avg cost" value={usd(held.avgCost)} />
+              <Stat label="Price" value={usd(held.price)} />
+              <Stat label="Value" value={usd(held.valueUsd)} />
+              <Stat label="Profit" value={usd(held.plUsd)} sub={pct(held.roi)} tone={held.plUsd >= 0 ? "pos" : "neg"} />
+              <Stat label="Value SGD" value={money(held.valueSgd)} />
+            </div>
+          </div>
+
+          <SeriesChart
+            points={(B.prices[held.ticker] || []).map((p) => ({ date: p.date, value: p.value }))}
+            baseline={held.avgCost}
+            baselineLabel={`avg cost ${plain(held.avgCost, 2)}`}
+            title={`${held.ticker} close · USD`}
+            dp={2}
+            idleRight={`vs avg cost ${pct(held.roi)}`}
+            refValue={held.avgCost}
+            markers={B.trades.filter((t) => t.ticker === held.ticker)}
+          />
+
+          <TradeTable trades={B.trades.filter((t) => t.ticker === held.ticker)} />
+        </section>
+      )}
+
+      {tab === "trades" && (
+        <section>
+          <div className="fl-seg">
+            <button className={"fl-segbtn " + (tradeView === "stock" ? "on" : "")} onClick={() => setTradeView("stock")}>
+              Stock trades
+            </button>
+            <button className={"fl-segbtn " + (tradeView === "fx" ? "on" : "")} onClick={() => setTradeView("fx")}>
+              FX conversions
+            </button>
+          </div>
+
+          {tradeView === "stock" ? (
+            <TradeTable
+              trades={B.trades}
+              showTicker
+              onTicker={(t) => {
+                if (B.holdings.some((h) => h.ticker === t)) {
+                  setTab("holdings");
+                  setTicker(t);
+                }
+              }}
+            />
+          ) : (
+            <Table head={["Date", "Pair", "SGD out", "USD in", "Rate", "At today's rate", "Difference"]}>
+              {B.conversions.map((c, i) => {
+                const nowSgd = c.usd * B.fx;
+                const diff = nowSgd - c.sgd;
+                return (
+                  <tr key={c.date + i}>
+                    <td className="n">{shortDate(c.date)}</td>
+                    <td className="fl-name">SGD → USD</td>
+                    <td className="r n">{money(c.sgd)}</td>
+                    <td className="r n">{usd(c.usd)}</td>
+                    <td className="r n strong">{plain(c.rate, 4)}</td>
+                    <td className="r n">{money(nowSgd)}</td>
+                    <td className={"r n " + (diff >= 0 ? "pos" : "neg")}>{money(diff)}</td>
+                  </tr>
+                );
+              })}
+              {!B.conversions.length && (
+                <tr>
+                  <td colSpan={7} className="fl-empty">
+                    No conversions recorded.
+                  </td>
+                </tr>
+              )}
+              {!!B.conversions.length && (
+                <tr className="fl-total">
+                  <td>Total</td>
+                  <td />
+                  <td className="r n">{money(B.sgdConverted)}</td>
+                  <td className="r n">{usd(B.usdAcquired)}</td>
+                  <td className="r n strong">{plain(B.avgRate, 4)}</td>
+                  <td className="r n">{money(B.usdAcquired * B.fx)}</td>
+                  <td className={"r n " + (B.fxPl >= 0 ? "pos" : "neg")}>{money(B.fxPl)}</td>
+                </tr>
+              )}
+            </Table>
+          )}
+        </section>
+      )}
+
+      <footer className="fl-foot">
+        Priced {longDate(FUND.pricedAsOf)} · {FUND.currency} · USD/SGD {plain(B.fx, 4)}
+      </footer>
+    </div>
+  );
+}
+
+/* ---------------- chart ---------------- */
+
+function SeriesChart({
+  points,
+  baseline,
+  baselineLabel,
+  title,
+  dp = 2,
+  idleRight,
+  refValue,
+  markers = [],
+  secondary,
+  hoverExtra,
+}) {
+  const [hover, setHover] = useState(null);
+  const boxRef = useRef(null);
+
+  if (!points || points.length < 2) return null;
+
+  const W = 1000;
+  const H = 176;
+  const PAD = 14;
+  const values = points.map((p) => p.value);
+  const secVals = secondary ? secondary.map((p) => p.value) : [];
+  const all = [...values, ...secVals];
+  const lo = Math.min(...all, baseline || Infinity);
+  const hi = Math.max(...all, baseline || -Infinity);
+  const pad = (hi - lo) * 0.12 || hi * 0.02 || 1;
+  const min = lo - pad;
+  const max = hi + pad;
+
+  const fx = (i) => (i / (points.length - 1)) * W;
+  const fy = (v) => H - PAD - ((v - min) / (max - min)) * (H - PAD * 2);
+  const rx = (i) => (i / (points.length - 1)) * 100;
+  const ry = (v) => (fy(v) / H) * 100;
+
+  const line = points.map((p, i) => `${i === 0 ? "M" : "L"}${fx(i).toFixed(1)},${fy(p.value).toFixed(1)}`).join(" ");
+  const area = `${line} L${W},${H} L0,${H} Z`;
+  const secLine = secondary
+    ? secondary.map((p, i) => `${i === 0 ? "M" : "L"}${fx(i).toFixed(1)},${fy(p.value).toFixed(1)}`).join(" ")
+    : null;
+  const up = points[points.length - 1].value >= points[0].value;
+  const stroke = up ? "#1D6B48" : "#A63A28";
+  const gid = "g" + title.replace(/\W/g, "");
+
+  const move = (clientX) => {
+    const el = boxRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const t = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    setHover(Math.round(t * (points.length - 1)));
+  };
+
+  const pt = hover != null ? points[hover] : null;
+  const change = pt && refValue ? pt.value / refValue - 1 : null;
+
+  const ticks = [];
+  points.forEach((p, i) => {
+    if (i && p.date.slice(0, 7) !== points[i - 1].date.slice(0, 7)) ticks.push({ i, date: p.date });
+  });
+
+  const pins = markers
+    .map((m) => {
+      let idx = points.findIndex((p) => p.date >= m.date);
+      if (idx < 0) idx = points.length - 1;
+      return { ...m, idx, value: points[idx].value };
+    })
+    .filter((m) => m.idx >= 0);
+
+  return (
+    <div className="fl-chart">
+      <div className="fl-charthead">
+        <span>
+          {title} · {points.length} days
+        </span>
+        <span className="n">
+          {pt
+            ? hoverExtra
+              ? hoverExtra(hover, pt)
+              : `${shortDate(pt.date)}  ${plain(pt.value, dp)}${change != null ? "  " + pct(change) : ""}`
+            : idleRight}
+        </span>
+      </div>
+
+      <div
+        className="fl-chartbox"
+        ref={boxRef}
+        onMouseMove={(e) => move(e.clientX)}
+        onMouseLeave={() => setHover(null)}
+        onTouchStart={(e) => move(e.touches[0].clientX)}
+        onTouchMove={(e) => move(e.touches[0].clientX)}
+        onTouchEnd={() => setHover(null)}
+      >
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="fl-chartsvg" aria-hidden="true">
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={stroke} stopOpacity="0.13" />
+              <stop offset="100%" stopColor={stroke} stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          {ticks.map((t) => (
+            <line key={t.date} x1={fx(t.i)} y1="0" x2={fx(t.i)} y2={H} stroke="#EDF0EC" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+          ))}
+          {baseline > 0 && (
+            <line
+              x1="0"
+              y1={fy(baseline)}
+              x2={W}
+              y2={fy(baseline)}
+              stroke="#C9D4CB"
+              strokeWidth="1"
+              strokeDasharray="4 4"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          <path d={area} fill={`url(#${gid})`} />
+          {secLine && (
+            <path d={secLine} fill="none" stroke="#6C7C86" strokeWidth="1.25" strokeDasharray="5 4" vectorEffect="non-scaling-stroke" />
+          )}
+          <path d={line} fill="none" stroke={stroke} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+        </svg>
+
+        {pins.map((m, i) => (
+          <div
+            key={i}
+            className={"fl-pin " + (String(m.side).toUpperCase() === "SELL" ? "sell" : "buy")}
+            style={{ left: rx(m.idx) + "%", top: ry(m.value) + "%" }}
+            title={`${String(m.side).toUpperCase()} ${Math.abs(m.shares)} @ ${plain(m.price, 2)} · ${shortDate(m.date)}`}
+          />
+        ))}
+
+        {pt && (
+          <>
+            <div className="fl-cross" style={{ left: rx(hover) + "%" }} />
+            <div className="fl-dot" style={{ left: rx(hover) + "%", top: ry(pt.value) + "%", background: stroke }} />
+          </>
+        )}
+      </div>
+
+      <div className="fl-chartfoot">
+        <span>{shortDate(points[0].date)}</span>
+        <span className="dim">{baselineLabel}</span>
+        <span>{shortDate(points[points.length - 1].date)}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- tables ---------------- */
+
+function LotTable({ lots, nav, showPerson, onPerson }) {
+  return (
+    <Table
+      head={["Date", showPerson ? "Investor" : "Note", "Amount", "NAV at entry", "Units issued", "Value now", "Profit", "Return"]}
+    >
+      {lots.map((l) => {
+        const value = l.units * nav;
+        const pl = value - l.amount;
+        return (
+          <tr key={l.key}>
+            <td className="n">{shortDate(l.date)}</td>
+            <td>
+              {showPerson ? (
+                <button className="fl-link" onClick={() => onPerson && onPerson(l.person)}>
+                  {l.person}
+                </button>
+              ) : (
+                <span className="dim">{l.note || "—"}</span>
+              )}
+            </td>
+            <td className="r n">{money(l.amount)}</td>
+            <td className="r n">{plain(l.navAtEntry, 4)}</td>
+            <td className="r n strong">{plain(l.units, 4)}</td>
+            <td className="r n">{money(value)}</td>
+            <td className={"r n " + (pl >= 0 ? "pos" : "neg")}>{money(pl)}</td>
+            <td className={"r n " + (pl >= 0 ? "pos" : "neg")}>{pct(l.amount ? pl / l.amount : 0)}</td>
+          </tr>
+        );
+      })}
+      {!lots.length && (
+        <tr>
+          <td colSpan={8} className="fl-empty">
+            No entries recorded.
+          </td>
+        </tr>
+      )}
+    </Table>
+  );
+}
+
+function TradeTable({ trades, showTicker, onTicker }) {
+  const head = showTicker
+    ? ["Date", "Ticker", "Side", "Shares", "Price", "Value", "Commission"]
+    : ["Date", "Side", "Shares", "Price", "Value", "Commission"];
+
+  return (
+    <Table head={head}>
+      {trades.map((t, i) => {
+        const sell = String(t.side).toUpperCase() === "SELL";
+        return (
+          <tr key={t.date + t.ticker + i}>
+            <td className="n">{shortDate(t.date)}</td>
+            {showTicker && (
+              <td>
+                {onTicker ? (
+                  <button className="fl-link" onClick={() => onTicker(t.ticker)}>
+                    {t.ticker}
+                  </button>
+                ) : (
+                  <span className="fl-name">{t.ticker}</span>
+                )}
+              </td>
+            )}
+            <td>
+              <span className={"fl-side " + (sell ? "sell" : "buy")}>{sell ? "SELL" : "BUY"}</span>
+            </td>
+            <td className="r n">{plain(Math.abs(t.shares), 4)}</td>
+            <td className="r n">{usd(t.price)}</td>
+            <td className="r n strong">{usd(Math.abs(t.shares * t.price))}</td>
+            <td className="r n dim">{t.commission != null ? usd(t.commission) : "—"}</td>
+          </tr>
+        );
+      })}
+      {!trades.length && (
+        <tr>
+          <td colSpan={7} className="fl-empty">
+            No trades recorded.
+          </td>
+        </tr>
+      )}
+    </Table>
+  );
+}
+
+function Stat({ label, value, sub, tone }) {
+  return (
+    <div className="fl-stat">
+      <div className="fl-statlabel">{label}</div>
+      <div className={"fl-statvalue " + (tone || "")}>{value}</div>
+      {sub && <div className={"fl-statsub " + (tone || "")}>{sub}</div>}
+    </div>
+  );
+}
+
+function Table({ head, children }) {
+  return (
+    <div className="fl-tablewrap">
+      <table className="fl-table">
+        <thead>
+          <tr>
+            {head.map((h, i) => (
+              <th key={h + i} className={i <= 1 ? "" : "r"}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function Styles() {
+  return (
+    <style>{`
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:wght@600&display=swap');
+
+.fl{--ink:#15242E;--ink2:#33505F;--paper:#FCFCFA;--bar:#E7EFE5;--rule:#C9D4CB;
+  --pos:#1D6B48;--neg:#A63A28;--muted:#6C7C86;
+  background:var(--paper);color:var(--ink);font-family:'IBM Plex Sans',system-ui,sans-serif;
+  padding:26px 22px 30px;min-height:100%;font-size:14px;line-height:1.5}
+.fl *{box-sizing:border-box}
+.fl .n,.fl-plvalue,.fl-statvalue,.fl-cardvalue{font-family:'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums}
+.pos{color:var(--pos)}.neg{color:var(--neg)}.dim{color:var(--muted)}.strong{font-weight:600}
+.r{text-align:right}
+
+.fl-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;
+  border-bottom:2px solid var(--ink);padding-bottom:14px}
+.fl-title{font-family:'IBM Plex Serif',Georgia,serif;font-weight:600;font-size:33px;
+  letter-spacing:-.015em;margin:0;line-height:1.05;max-width:520px}
+.fl-plbox{text-align:right}
+.fl-pllabel{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--muted)}
+.fl-plvalue{font-size:33px;font-weight:600;line-height:1.1}
+.fl-pldelta{font-family:'IBM Plex Mono',monospace;font-size:12px;font-variant-numeric:tabular-nums}
+
+.fl-strip,.fl-fx{display:flex;flex-wrap:wrap;border:1px solid var(--rule)}
+.fl-strip{border-top:0}
+.fl-fx{margin-top:18px;background:#fff}
+.fl-stat{flex:1;min-width:128px;padding:11px 13px;border-right:1px solid var(--rule)}
+.fl-stat:last-child{border-right:0}
+.fl-statlabel{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.fl-statvalue{font-size:16px;font-weight:600}
+.fl-statsub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-top:1px}
+
+.fl-chart{margin-top:16px;border:1px solid var(--rule);background:#fff;padding:11px 13px 8px}
+.fl-charthead{display:flex;justify-content:space-between;gap:10px;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.fl-chartbox{position:relative;width:100%;height:176px;cursor:crosshair;touch-action:pan-y}
+.fl-chartsvg{width:100%;height:100%;display:block}
+.fl-cross{position:absolute;top:0;bottom:0;width:1px;background:var(--rule);pointer-events:none}
+.fl-dot{position:absolute;width:7px;height:7px;border-radius:50%;transform:translate(-50%,-50%);
+  pointer-events:none;box-shadow:0 0 0 2px #fff}
+.fl-pin{position:absolute;width:8px;height:8px;transform:translate(-50%,-50%) rotate(45deg);
+  border:1.5px solid var(--pos);background:#fff}
+.fl-pin.sell{border-color:var(--neg)}
+.fl-chartfoot{display:flex;justify-content:space-between;gap:10px;margin-top:5px;
+  font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--muted)}
+
+.fl-tabs{display:flex;align-items:center;gap:2px;margin-top:20px;border-bottom:1px solid var(--rule);flex-wrap:wrap}
+.fl-tab{font-size:13px;font-weight:500;color:var(--muted);background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:8px 13px;cursor:pointer;font-family:inherit}
+.fl-tab:hover{color:var(--ink)}
+.fl-tab.on{color:var(--ink);border-bottom-color:var(--ink)}
+.fl-tabspacer{flex:1;min-width:8px}
+.fl-export{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  background:transparent;border:1px solid var(--rule);color:var(--ink2);padding:6px 12px;
+  cursor:pointer;margin-bottom:6px}
+.fl-export:hover{border-color:var(--ink);background:var(--bar)}
+.fl-tab:focus-visible,.fl-segbtn:focus-visible,.fl-card:focus-visible,.fl-link:focus-visible,
+.fl-back:focus-visible,.fl-export:focus-visible{outline:2px solid var(--pos);outline-offset:2px}
+
+.fl-seg{display:inline-flex;border:1px solid var(--rule);margin-top:18px}
+.fl-segbtn{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  background:transparent;border:0;color:var(--muted);padding:7px 14px;cursor:pointer}
+.fl-segbtn+.fl-segbtn{border-left:1px solid var(--rule)}
+.fl-segbtn.on{background:var(--ink);color:#fff}
+
+.fl-cards{display:flex;gap:11px;flex-wrap:wrap;margin-top:16px}
+.fl-card{flex:1;min-width:210px;border:1px solid var(--rule);padding:13px 14px 11px;background:#fff;
+  text-align:left;font-family:inherit;color:inherit;cursor:pointer;display:block}
+.fl-card:hover{border-color:var(--ink);box-shadow:3px 3px 0 var(--bar)}
+.fl-cardtop{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.fl-cardname{font-weight:600;font-size:14.5px}
+.fl-cardshare{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted)}
+.fl-cardvalue{font-size:22px;font-weight:600;line-height:1.15}
+.fl-cardpl{font-family:'IBM Plex Mono',monospace;font-size:12px;margin-top:2px}
+.fl-cardmeta{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted);margin-top:7px}
+.fl-bar{height:3px;background:var(--bar);margin-top:9px}
+.fl-barfill{height:100%;background:var(--ink)}
+.fl-cardgo{font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--muted);margin-top:9px}
+.fl-card:hover .fl-cardgo{color:var(--pos)}
+
+.fl-link{background:transparent;border:0;padding:0;font:inherit;font-weight:600;color:var(--ink);
+  cursor:pointer;border-bottom:1px dotted var(--muted)}
+.fl-link:hover{color:var(--pos);border-bottom-color:var(--pos)}
+.fl-back{background:transparent;border:0;padding:0;margin-top:18px;font-family:'IBM Plex Mono',monospace;
+  font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer}
+.fl-back:hover{color:var(--ink)}
+.fl-detailhead{margin-top:12px;border-top:2px solid var(--ink);padding-top:12px}
+.fl-detailname{font-family:'IBM Plex Serif',Georgia,serif;font-weight:600;font-size:25px;margin:0 0 11px}
+.fl-detailstats{display:flex;flex-wrap:wrap;border:1px solid var(--rule)}
+
+.fl-tablewrap{overflow-x:auto;margin-top:18px;border:1px solid var(--rule)}
+.fl-table{width:100%;border-collapse:collapse;font-size:13px;min-width:680px}
+.fl-table th{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--muted);text-align:left;padding:9px 11px;border-bottom:1px solid var(--rule);
+  font-weight:500;white-space:nowrap}
+.fl-table th.r{text-align:right}
+.fl-table td{padding:8px 11px;border-bottom:1px solid #EDF0EC}
+.fl-table tbody tr:nth-child(odd){background:var(--bar)}
+.fl-table tr.fl-cashrow td{background:#fff;border-top:1px solid var(--rule)}
+.fl-table tr.fl-total td{border-top:2px solid var(--ink);border-bottom:0;font-weight:600;
+  background:transparent;padding:10px 11px}
+.fl-name{font-weight:600}
+.fl-empty{text-align:center;color:var(--muted);padding:26px 10px}
+.fl-side{font-family:'IBM Plex Mono',monospace;font-size:9.5px;font-weight:600;letter-spacing:.1em;
+  border:1px solid var(--pos);color:var(--pos);padding:1px 6px}
+.fl-side.sell{border-color:var(--neg);color:var(--neg)}
+
+.fl-foot{margin-top:26px;padding-top:12px;border-top:1px solid var(--rule);
+  font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted)}
+
+@media (max-width:640px){
+  .fl{padding:18px 13px 26px}
+  .fl-title,.fl-plvalue{font-size:25px}
+  .fl-head{align-items:flex-start}
+  .fl-stat{min-width:50%;border-bottom:1px solid var(--rule)}
+  .fl-chartbox{height:136px}
+}
+@media (prefers-reduced-motion:reduce){.fl *{transition:none!important;animation:none!important}}
+`}</style>
+  );
+}
+
+const mount = document.getElementById("root");
+if (ReactDOM.createRoot) {
+  ReactDOM.createRoot(mount).render(<FundLedger />);
+} else {
+  ReactDOM.render(<FundLedger />, mount);
+}
+</script>
+</body>
+</html>
