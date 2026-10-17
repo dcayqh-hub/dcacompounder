@@ -1,0 +1,74 @@
+# Fetches the day's closing prices and publishes the site.
+#
+# Runs:
+#   - every weekday at 22:30 UTC (06:30 SGT), after the New York close
+#   - again at 02:30 UTC (10:30 SGT) as a catch-up, harmless if nothing is new
+#   - whenever you upload files (push), which just republishes the site
+#   - on demand: Actions tab -> "Update prices and deploy" -> Run workflow
+#
+# Requires Settings -> Pages -> Source set to "GitHub Actions".
+# (A commit made by a workflow does not trigger a branch-based Pages build,
+#  so this workflow deploys the site itself.)
+
+name: Update prices and deploy
+
+on:
+  schedule:
+    - cron: "30 22 * * 1-5"
+    - cron: "30 2 * * 2-6"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        if: github.event_name != 'push'
+        with:
+          python-version: "3.12"
+
+      - name: Fetch new closes
+        if: github.event_name != 'push'
+        run: |
+          pip install --quiet "yfinance>=0.2.54"
+          python scripts/update_prices.py
+
+      - name: Commit prices
+        if: github.event_name != 'push'
+        run: |
+          if git diff --quiet -- prices.json; then
+            echo "No new closes to commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add prices.json
+            git commit -m "prices: closes through $(python -c 'import json;print(max(json.load(open("prices.json"))["closes"]))')"
+            git pull --rebase --autostash origin main
+            git push
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
