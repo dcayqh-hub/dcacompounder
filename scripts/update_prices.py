@@ -9,9 +9,12 @@ A wrong price written silently is the one outcome this script exists to prevent.
 Safeguards, in order:
   1. Currency   - every Yahoo listing must report the currency fund.json expects (USD for the six
                   holdings, SGD for FX). Catches the GBp/EUR/CHF lines of the same funds.
-  2. Overlap    - Yahoo's closes are compared against every close already stored for the same dates,
-                  including the IBKR-seeded history. Any gap over 1% (0.5% for FX) aborts the run.
-                  Catches wrong share class, wrong venue, or a mis-mapped symbol.
+  2. Overlap    - Yahoo's closes are compared against every close already stored for the same
+                  dates, including the IBKR-seeded history. A wrong share class, fund or venue is
+                  off by a similar amount every day, so the test is the MEDIAN gap (0.5%, 0.2% FX),
+                  plus how many days are outliers and whether any single day is grossly wrong.
+                  One volatile day differing by ~1% is normal: IBKR stored a delayed last trade,
+                  Yahoo reports the closing auction.
   3. Range      - FX must sit between fund.json's min and max. Catches an inverted rate.
   4. Daily move - a close moving more than maxMove from the previous stored close aborts the run.
   5. Finality   - a bar dated D is only accepted after D 22:20 UTC (after the NYSE close and the
@@ -24,6 +27,7 @@ Rows are append-only. Nothing already in prices.json is ever rewritten.
 import datetime as dt
 import json
 import math
+import statistics
 import sys
 from pathlib import Path
 
@@ -36,8 +40,16 @@ PRICES = json.loads(PRICES_PATH.read_text())
 CLOSES = PRICES["closes"]
 
 FINAL_AFTER_UTC = dt.time(22, 20)
-OVERLAP_TOL = 0.01
+# Wrong-instrument detection. A wrong share class, fund or venue is off by a similar
+# amount EVERY day, so the median gap is the discriminating statistic. Two honest feeds
+# disagreeing on one volatile day (IBKR records a delayed last trade, Yahoo the closing
+# auction) leaves the median near zero, so a single outlier is reported, not fatal.
+OVERLAP_TOL = 0.01          # a single day past this is counted as an outlier
 OVERLAP_TOL_FX = 0.005
+MEDIAN_LIMIT = 0.005        # persistent offset => not the same instrument
+MEDIAN_LIMIT_FX = 0.002
+OUTLIER_SHARE = 0.25        # at most this fraction of overlapping days may be outliers
+GROSS_LIMIT = 0.10          # no single day may ever be off by this much
 LOOKBACK_DAYS = 35
 
 
@@ -73,18 +85,34 @@ def is_final(date_str, now):
     return now >= dt.datetime.combine(d, FINAL_AFTER_UTC, tzinfo=dt.timezone.utc)
 
 
-def check_overlap(key, fetched, tol):
-    worst = 0.0
-    for d, v in fetched.items():
-        stored = CLOSES.get(d, {}).get(key)
-        if stored is None:
-            continue
-        diff = abs(v / stored - 1)
-        worst = max(worst, diff)
-        if diff > tol:
-            fail(f"{key} on {d}: Yahoo {v} vs stored {stored} ({diff:.2%} apart, limit {tol:.1%}). "
-                 f"The Yahoo symbol may not be the same instrument.")
-    return worst
+def compare(key, fetched, tol, median_limit):
+    """Compare fetched closes against stored ones. Returns (line, fatal_reason_or_None)."""
+    pairs = [(d, v, CLOSES[d][key]) for d, v in fetched.items()
+             if d in CLOSES and CLOSES[d].get(key) is not None]
+    if not pairs:
+        return f"  {key:<5} no overlapping dates to check", None
+    diffs = {d: abs(v / stored - 1) for d, v, stored in pairs}
+    median = statistics.median(diffs.values())
+    outliers = sorted(d for d, g in diffs.items() if g > tol)
+    worst_d = max(diffs, key=diffs.get)
+    worst = diffs[worst_d]
+    line = (f"  {key:<5} {len(pairs):>2} days  median {median:>6.3%}  worst {worst:>6.3%}"
+            f" on {worst_d}  outliers {len(outliers)}")
+    if outliers:
+        line += "  (" + ", ".join(outliers[:4]) + (", ..." if len(outliers) > 4 else "") + ")"
+
+    if median > median_limit:
+        return line, (f"{key}: median gap {median:.2%} across {len(pairs)} days, above "
+                      f"{median_limit:.1%}. A consistent offset means this is not the same "
+                      f"instrument — check the Yahoo symbol in fund.json.")
+    if len(outliers) > max(1, OUTLIER_SHARE * len(pairs)):
+        return line, (f"{key}: {len(outliers)} of {len(pairs)} days differ by more than "
+                      f"{tol:.1%}. Too many to be feed noise.")
+    if worst > GROSS_LIMIT:
+        v = fetched[worst_d]
+        return line, (f"{key} on {worst_d}: Yahoo {v} vs stored {CLOSES[worst_d][key]} "
+                      f"({worst:.1%} apart). Too large to accept.")
+    return line, None
 
 
 def main():
@@ -100,9 +128,19 @@ def main():
     data["FX"] = fetch(fxspec["yahoo"], fxspec["currency"], start)
 
     print("\nCross-check against stored closes:")
+    problems = []
     for key, series in data.items():
-        tol = OVERLAP_TOL_FX if key == "FX" else OVERLAP_TOL
-        print(f"  {key:<5} max gap {check_overlap(key, series, tol):.3%}")
+        is_fx = key == "FX"
+        line, bad = compare(key, series,
+                            OVERLAP_TOL_FX if is_fx else OVERLAP_TOL,
+                            MEDIAN_LIMIT_FX if is_fx else MEDIAN_LIMIT)
+        print(line)
+        if bad:
+            problems.append(bad)
+    if problems:
+        fail("\n       ".join(problems))
+    print("  All symbols track the stored IBKR history. Isolated outliers above are feed\n"
+          "  differences (IBKR delayed last trade vs Yahoo closing auction), not mismatches.")
 
     lse = [i["ticker"] for i in instruments if i["calendar"] == "LSE"]
     others = [i["ticker"] for i in instruments if i["calendar"] != "LSE"] + ["FX"]
