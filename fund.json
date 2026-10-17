@@ -108,6 +108,20 @@
    "amount": 18000,
    "navAtEntry": 9.9016,
    "note": "Top-up"
+  },
+  {
+   "date": "2026-10-15",
+   "person": "J",
+   "amount": 4000,
+   "navAtEntry": 9.9002,
+   "note": "Monthly"
+  },
+  {
+   "date": "2026-10-15",
+   "person": "Q",
+   "amount": 18000,
+   "navAtEntry": 9.9002,
+   "note": "Top-up"
   }
  ],
  "conversions": [
@@ -128,6 +142,12 @@
    "sgd": 22002.76,
    "usd": 17292.19,
    "rate": 1.27225
+  },
+  {
+   "date": "2026-10-15",
+   "sgd": 22002.8,
+   "usd": 17147.31,
+   "rate": 1.283
   }
  ],
  "trades": [
@@ -234,6 +254,56 @@
    "shares": 25.2976,
    "price": 33.6,
    "commission": 0
+  },
+  {
+   "date": "2026-10-15",
+   "ticker": "EQQS",
+   "side": "BUY",
+   "shares": 36.9411,
+   "price": 92.8503,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-10-15",
+   "ticker": "IGLN",
+   "side": "BUY",
+   "shares": 42.6356,
+   "price": 80.449,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-10-15",
+   "ticker": "EIMI",
+   "side": "BUY",
+   "shares": 33.0237,
+   "price": 51.9323,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-10-15",
+   "ticker": "IWVL",
+   "side": "BUY",
+   "shares": 21.9169,
+   "price": 78.25,
+   "commission": 4.36,
+   "note": "Intended 10% leg, order 80713835"
+  },
+  {
+   "date": "2026-10-15",
+   "ticker": "IWVL",
+   "side": "BUY",
+   "shares": 76.7519,
+   "price": 78.2,
+   "commission": 4.36,
+   "note": "MIS-TICKERED: this was the IWDA 35% leg, order 80713824. IWDA received nothing."
+  },
+  {
+   "date": "2026-10-15",
+   "ticker": "BTC",
+   "side": "BUY",
+   "shares": 24.202,
+   "price": 35.4102,
+   "commission": 0
   }
  ],
  "cash": [
@@ -272,6 +342,12 @@
    "sgd": 391.6716,
    "usd": 329.3926,
    "note": "Third conversion and buys"
+  },
+  {
+   "date": "2026-10-15",
+   "sgd": 388.87,
+   "usd": 305.78,
+   "note": "Q S$18,000 + J S$4,000 landed 15 Oct, converted and deployed same day. US$0.15 below the trade-derived 305.93 — market-data snapshot fees, same as 3 Sep."
   }
  ]
 }
