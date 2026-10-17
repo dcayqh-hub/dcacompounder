@@ -1,0 +1,277 @@
+{
+ "_readme": "Everything private to the account lives here. Update this file only when money moves: a contribution, a conversion, a trade, or a cash change. Prices never go here; they live in prices.json and update themselves.",
+ "name": "DCA Global Compounder",
+ "currency": "SGD",
+ "inceptionDate": "2026-08-15",
+ "inceptionNav": 10,
+ "fx": {
+  "yahoo": "SGD=X",
+  "currency": "SGD",
+  "min": 1.0,
+  "max": 2.0,
+  "maxMove": 0.05
+ },
+ "instruments": [
+  {
+   "ticker": "IWDA",
+   "name": "iShares Core MSCI World UCITS ETF",
+   "exchange": "LSE · USD",
+   "target": 0.35,
+   "yahoo": "IWDA.L",
+   "currency": "USD",
+   "calendar": "LSE",
+   "maxMove": 0.15
+  },
+  {
+   "ticker": "EQQS",
+   "name": "Invesco Nasdaq-100 Swap UCITS ETF",
+   "exchange": "LSE · USD",
+   "target": 0.2,
+   "yahoo": "EQQS.L",
+   "currency": "USD",
+   "calendar": "LSE",
+   "maxMove": 0.15
+  },
+  {
+   "ticker": "IGLN",
+   "name": "iShares Physical Gold ETC",
+   "exchange": "LSE · USD",
+   "target": 0.2,
+   "yahoo": "IGLN.L",
+   "currency": "USD",
+   "calendar": "LSE",
+   "maxMove": 0.15
+  },
+  {
+   "ticker": "EIMI",
+   "name": "iShares Core MSCI EM IMI UCITS ETF",
+   "exchange": "LSE · USD",
+   "target": 0.1,
+   "yahoo": "EIMI.L",
+   "currency": "USD",
+   "calendar": "LSE",
+   "maxMove": 0.15
+  },
+  {
+   "ticker": "IWVL",
+   "name": "iShares Edge MSCI World Value Factor UCITS ETF",
+   "exchange": "LSE · USD",
+   "target": 0.1,
+   "yahoo": "IWVL.L",
+   "currency": "USD",
+   "calendar": "LSE",
+   "maxMove": 0.15
+  },
+  {
+   "ticker": "BTC",
+   "name": "Grayscale Bitcoin Mini Trust",
+   "exchange": "NYSE Arca · USD",
+   "target": 0.05,
+   "yahoo": "BTC",
+   "currency": "USD",
+   "calendar": "US",
+   "maxMove": 0.4
+  }
+ ],
+ "contributions": [
+  {
+   "date": "2026-08-15",
+   "person": "Q",
+   "amount": 18000,
+   "navAtEntry": 10,
+   "note": "Inception"
+  },
+  {
+   "date": "2026-08-15",
+   "person": "J",
+   "amount": 4000,
+   "navAtEntry": 10,
+   "note": "Inception"
+  },
+  {
+   "date": "2026-08-17",
+   "person": "Q",
+   "amount": 500,
+   "navAtEntry": 10,
+   "note": "Top-up"
+  },
+  {
+   "date": "2026-09-14",
+   "person": "J",
+   "amount": 4000,
+   "navAtEntry": 9.9016,
+   "note": "Monthly"
+  },
+  {
+   "date": "2026-09-14",
+   "person": "Q",
+   "amount": 18000,
+   "navAtEntry": 9.9016,
+   "note": "Top-up"
+  }
+ ],
+ "conversions": [
+  {
+   "date": "2026-08-17",
+   "sgd": 22002.79,
+   "usd": 17221,
+   "rate": 1.27751
+  },
+  {
+   "date": "2026-08-19",
+   "sgd": 102.78,
+   "usd": 78.26,
+   "rate": 1.2777
+  },
+  {
+   "date": "2026-09-15",
+   "sgd": 22002.76,
+   "usd": 17292.19,
+   "rate": 1.27225
+  }
+ ],
+ "trades": [
+  {
+   "date": "2026-08-17",
+   "ticker": "IWDA",
+   "side": "BUY",
+   "shares": 40.3251,
+   "price": 149.46,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-08-17",
+   "ticker": "IGLN",
+   "side": "BUY",
+   "shares": 40.4083,
+   "price": 85.23,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-08-17",
+   "ticker": "EIMI",
+   "side": "BUY",
+   "shares": 31.1787,
+   "price": 55.23,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-08-17",
+   "ticker": "IWVL",
+   "side": "BUY",
+   "shares": 20.9062,
+   "price": 82.3678,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-08-17",
+   "ticker": "EQQS",
+   "side": "BUY",
+   "shares": 36.3982,
+   "price": 94.62,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-08-19",
+   "ticker": "BTC",
+   "side": "BUY",
+   "shares": 30,
+   "price": 28.5,
+   "commission": 0
+  },
+  {
+   "date": "2026-09-15",
+   "ticker": "IWDA",
+   "side": "BUY",
+   "shares": 40.9553,
+   "price": 145.28,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-09-15",
+   "ticker": "EQQS",
+   "side": "BUY",
+   "shares": 37.3175,
+   "price": 91.1099,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-09-15",
+   "ticker": "IGLN",
+   "side": "BUY",
+   "shares": 20.4474,
+   "price": 83.14,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-09-15",
+   "ticker": "IGLN",
+   "side": "BUY",
+   "shares": 20.5366,
+   "price": 82.7789,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-09-15",
+   "ticker": "EIMI",
+   "side": "BUY",
+   "shares": 31.4815,
+   "price": 53.9998,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-09-15",
+   "ticker": "IWVL",
+   "side": "BUY",
+   "shares": 20.8845,
+   "price": 81.4,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-09-15",
+   "ticker": "BTC",
+   "side": "BUY",
+   "shares": 25.2976,
+   "price": 33.6,
+   "commission": 0
+  }
+ ],
+ "cash": [
+  {
+   "date": "2026-08-15",
+   "sgd": 22000.0,
+   "usd": 0.0,
+   "note": "Inception deposits"
+  },
+  {
+   "date": "2026-08-17",
+   "sgd": 497.21,
+   "usd": 840.2155,
+   "note": "First conversion and LSE buys"
+  },
+  {
+   "date": "2026-08-19",
+   "sgd": 394.43,
+   "usd": 63.4754,
+   "note": "Second conversion and BTC buy"
+  },
+  {
+   "date": "2026-09-03",
+   "sgd": 394.43,
+   "usd": 63.33,
+   "note": "US$0.15 debit, likely market-data snapshot fees"
+  },
+  {
+   "date": "2026-09-14",
+   "sgd": 22394.43,
+   "usd": 63.33,
+   "note": "Q S$18,000 and J S$4,000 landed"
+  },
+  {
+   "date": "2026-09-15",
+   "sgd": 391.6716,
+   "usd": 329.3926,
+   "note": "Third conversion and buys"
+  }
+ ]
+}

@@ -35,16 +35,11 @@ const { useState, useMemo, useRef } = React;
 /* ═══════════════════════════════════════════════════════════════
    DCA GLOBAL COMPOUNDER — read-only ledger.
 
-   ▼▼▼ EVERYTHING EDITABLE LIVES IN THIS ONE BLOCK ▼▼▼
-   Ping Claude with: investor, amount, date. Claude pulls positions,
-   cash, trades, conversions and daily prices from IBKR.
-
-   TRADE MERGING RULE — applies to every future update:
-   IBKR splits one order into a main fill (LSEETF) plus a fractional
-   remainder (EUIBSI, zero commission). These are ONE trade. Always
-   merge them into a single row: sum the shares, use the share-weighted
-   average price, and carry the single commission. Never list the
-   fractional fill separately.
+   This page holds no data. It loads two files beside it:
+     fund.json    account state: contributions, conversions, trades, cash.
+                  Changes only when money moves. Updated by hand via Claude + IBKR.
+     prices.json  daily closes and SGD/USD. Appended every trading day by
+                  scripts/update_prices.py on GitHub Actions. Never edit by hand.
 
    Model (reporting currency SGD, assets priced in USD):
      Securities USD = Σ(shares × usdPrice)
@@ -52,290 +47,67 @@ const { useState, useMemo, useRef } = React;
      NAV / unit      = fund value ÷ units outstanding
      Units issued    = amount ÷ navAtEntry
 
-   FX attribution — USD is treated as a position with a cost basis:
-     avgRate  = total SGD converted ÷ total USD received
-     FX P&L   = USD acquired × (fxRate − avgRate)
-     Stock    = (USD held − USD acquired) × fxRate
-     The two sum exactly to total profit on USD assets.
-
-   Daily blocks are "YYYY-MM-DD  value", one line per trading day.
-   Append only; never rewrite past rows.
+   TRADE MERGING RULE: IBKR splits one order into a main fill (LSEETF) plus a
+   fractional remainder (EUIBSI, zero commission). These are ONE trade row:
+   summed shares, share-weighted price, one commission.
    ═══════════════════════════════════════════════════════════════ */
-const FUND = {
-    name: "DCA Global Compounder",
-    currency: "SGD",
-    pricedAsOf: "2026-09-17",
-    inceptionNav: 10.0,
-    fxRate: 1.27540, // SGD per USD, 17 Sep close (IDEALPRO mid)
-    cashSGD: 391.6716,
-    cashUSD: 329.3926,
-    // Prices and costs in USD. avgCost includes commission (4.36/order all-in:
-    // IBKR reports 4.00 and omits 0.36 of LSE exchange fees).
-    holdings: [
-        { ticker: "IWDA", shares: 81.2804, avgCost: 147.4611, price: 146.2200 },
-        { ticker: "EQQS", shares: 73.7157, avgCost: 92.9614, price: 92.2600 },
-        { ticker: "IGLN", shares: 81.3923, avgCost: 84.2472, price: 84.5475 },
-        { ticker: "EIMI", shares: 62.6602, avgCost: 54.7511, price: 54.8600 },
-        { ticker: "IWVL", shares: 41.7907, avgCost: 82.0928, price: 82.4400 },
-        { ticker: "BTC", shares: 55.2976, avgCost: 30.8332, price: 33.8200 },
-    ],
-    // SGD → USD conversions. sgd is the all-in cost including commission.
-    conversions: [
-        { date: "2026-08-17", sgd: 22002.79, usd: 17221.0, rate: 1.27751 },
-        { date: "2026-08-19", sgd: 102.78, usd: 78.26, rate: 1.27770 },
-        { date: "2026-09-15", sgd: 22002.76, usd: 17292.19, rate: 1.27225 },
-    ],
-    contributions: [
-        { date: "2026-08-15", person: "Q", amount: 18000, navAtEntry: 10.0, note: "Inception" },
-        { date: "2026-08-15", person: "J", amount: 4000, navAtEntry: 10.0, note: "Inception" },
-        { date: "2026-08-17", person: "Q", amount: 500, navAtEntry: 10.0, note: "Top-up" },
-        { date: "2026-09-14", person: "J", amount: 4000, navAtEntry: 9.9016, note: "Monthly" },
-        { date: "2026-09-14", person: "Q", amount: 18000, navAtEntry: 9.9016, note: "Top-up" },
-    ],
-    trades: [
-        { date: "2026-08-17", ticker: "IWDA", side: "BUY", shares: 40.3251, price: 149.46, commission: 4.36 },
-        { date: "2026-08-17", ticker: "IGLN", side: "BUY", shares: 40.4083, price: 85.23, commission: 4.36 },
-        { date: "2026-08-17", ticker: "EIMI", side: "BUY", shares: 31.1787, price: 55.23, commission: 4.36 },
-        { date: "2026-08-17", ticker: "IWVL", side: "BUY", shares: 20.9062, price: 82.3678, commission: 4.36 },
-        { date: "2026-08-17", ticker: "EQQS", side: "BUY", shares: 36.3982, price: 94.62, commission: 4.36 },
-        { date: "2026-08-19", ticker: "BTC", side: "BUY", shares: 30.0, price: 28.50, commission: 0 },
-        { date: "2026-09-15", ticker: "IWDA", side: "BUY", shares: 40.9553, price: 145.28, commission: 4.36 },
-        { date: "2026-09-15", ticker: "EQQS", side: "BUY", shares: 37.3175, price: 91.1099, commission: 4.36 },
-        { date: "2026-09-15", ticker: "IGLN", side: "BUY", shares: 20.4474, price: 83.14, commission: 4.36 },
-        { date: "2026-09-15", ticker: "IGLN", side: "BUY", shares: 20.5366, price: 82.7789, commission: 4.36 },
-        { date: "2026-09-15", ticker: "EIMI", side: "BUY", shares: 31.4815, price: 53.9998, commission: 4.36 },
-        { date: "2026-09-15", ticker: "IWVL", side: "BUY", shares: 20.8845, price: 81.40, commission: 4.36 },
-        { date: "2026-09-15", ticker: "BTC", side: "BUY", shares: 25.2976, price: 33.60, commission: 0 },
-    ],
-    navDaily: `
-2026-08-15  10.0000
-2026-08-17   9.9998
-2026-08-18   9.8446
-2026-08-19   9.9039
-2026-08-20   9.9319
-2026-08-21  10.0082
-2026-08-24  10.0082
-2026-08-25  10.0278
-2026-08-26  10.0211
-2026-08-27  10.0619
-2026-08-28  10.0455
-2026-09-01   9.9149
-2026-09-02   9.8889
-2026-09-03  10.0262
-2026-09-04   9.9862
-2026-09-07   9.9855
-2026-09-08   9.9558
-2026-09-09   9.8934
-2026-09-10   9.8491
-2026-09-11   9.9016
-2026-09-14   9.8641
-2026-09-15   9.8369
-2026-09-16   9.9413
-2026-09-17   9.9699
-`,
-    cashDaily: `
-2026-08-15  22000.00
-2026-08-17   1570.86
-2026-08-18   1571.22
-2026-08-19    475.12
-2026-08-20    475.18
-2026-08-21    475.01
-2026-08-24    475.08
-2026-08-25    475.00
-2026-08-26    475.16
-2026-08-27    475.12
-2026-08-28    475.33
-2026-09-01    475.26
-2026-09-02    475.12
-2026-09-03    474.69
-2026-09-04    474.66
-2026-09-07    474.63
-2026-09-08    474.54
-2026-09-09    474.49
-2026-09-10    474.74
-2026-09-11    474.66
-2026-09-14  22474.88
-2026-09-15    810.95
-2026-09-16    812.54
-2026-09-17    811.78
-`,
-    fxDaily: `
-2026-08-15  1.29000
-2026-08-17  1.27782
-2026-08-18  1.27825
-2026-08-19  1.27125
-2026-08-20  1.27212
-2026-08-21  1.26945
-2026-08-24  1.27055
-2026-08-25  1.26927
-2026-08-26  1.27185
-2026-08-27  1.27127
-2026-08-28  1.27458
-2026-09-01  1.27340
-2026-09-02  1.27113
-2026-09-03  1.26730
-2026-09-04  1.26685
-2026-09-07  1.26632
-2026-09-08  1.26503
-2026-09-09  1.26425
-2026-09-10  1.26808
-2026-09-11  1.26680
-2026-09-14  1.27030
-2026-09-15  1.27288
-2026-09-16  1.27770
-2026-09-17  1.27540
-`,
-    priceDaily: {
-        IWDA: `
-2026-08-17  149.11
-2026-08-18  147.56
-2026-08-19  148.12
-2026-08-20  147.39
-2026-08-21  147.71
-2026-08-24  147.31
-2026-08-25  147.68
-2026-08-26  147.60
-2026-08-27  148.15
-2026-08-28  147.28
-2026-09-01  146.74
-2026-09-02  147.02
-2026-09-03  148.64
-2026-09-04  148.09
-2026-09-07  148.05
-2026-09-08  147.87
-2026-09-09  146.56
-2026-09-10  145.83
-2026-09-11  146.96
-2026-09-14  145.96
-2026-09-15  145.21
-2026-09-16  145.89
-2026-09-17  146.22
-`,
-        EQQS: `
-2026-08-17  94.48
-2026-08-18  92.485
-2026-08-19  92.57
-2026-08-20  91.765
-2026-08-21  91.86
-2026-08-24  91.105
-2026-08-25  91.60
-2026-08-26  91.48
-2026-08-27  92.60
-2026-08-28  93.23
-2026-09-01  91.53
-2026-09-02  91.39
-2026-09-03  92.49
-2026-09-04  92.42
-2026-09-07  92.68
-2026-09-08  92.79
-2026-09-09  92.115
-2026-09-10  91.67
-2026-09-11  92.43
-2026-09-14  91.43
-2026-09-15  90.915
-2026-09-16  91.53
-2026-09-17  92.26
-`,
-        IGLN: `
-2026-08-17  85.7925
-2026-08-18  84.5625
-2026-08-19  87.01
-2026-08-20  87.745
-2026-08-21  89.3725
-2026-08-24  90.6475
-2026-08-25  90.17
-2026-08-26  89.21
-2026-08-27  89.175
-2026-08-28  88.425
-2026-09-01  84.6075
-2026-09-02  84.7975
-2026-09-03  87.355
-2026-09-04  86.12
-2026-09-07  85.60
-2026-09-08  85.415
-2026-09-09  85.38
-2026-09-10  84.7625
-2026-09-11  84.83
-2026-09-14  83.305
-2026-09-15  83.0975
-2026-09-16  84.34
-2026-09-17  84.5475
-`,
-        EIMI: `
-2026-08-17  55.59
-2026-08-18  53.71
-2026-08-19  54.26
-2026-08-20  54.47
-2026-08-21  55.06
-2026-08-24  54.20
-2026-08-25  55.04
-2026-08-26  55.19
-2026-08-27  55.38
-2026-08-28  55.03
-2026-09-01  55.28
-2026-09-02  55.07
-2026-09-03  55.23
-2026-09-04  56.04
-2026-09-07  56.30
-2026-09-08  56.45
-2026-09-09  56.17
-2026-09-10  55.21
-2026-09-11  55.71
-2026-09-14  54.28
-2026-09-15  53.89
-2026-09-16  54.43
-2026-09-17  54.86
-`,
-        IWVL: `
-2026-08-17  82.59
-2026-08-18  80.89
-2026-08-19  81.18
-2026-08-20  81.36
-2026-08-21  81.99
-2026-08-24  81.08
-2026-08-25  81.56
-2026-08-26  81.60
-2026-08-27  81.30
-2026-08-28  81.79
-2026-09-01  81.70
-2026-09-02  81.64
-2026-09-03  82.71
-2026-09-04  83.19
-2026-09-07  83.72
-2026-09-08  83.24
-2026-09-09  82.76
-2026-09-10  82.06
-2026-09-11  82.85
-2026-09-14  81.91
-2026-09-15  81.76
-2026-09-16  81.81
-2026-09-17  82.44
-`,
-        BTC: `
-2026-08-19  30.27
-2026-08-20  32.15
-2026-08-21  34.08
-2026-08-24  34.84
-2026-08-25  34.92
-2026-08-26  34.71
-2026-08-27  35.34
-2026-08-28  34.30
-2026-09-01  34.88
-2026-09-02  34.17
-2026-09-03  36.16
-2026-09-04  35.31
-2026-09-07  35.31   // US Labor Day, 4 Sep close carried
-2026-09-08  34.68
-2026-09-09  34.59
-2026-09-10  34.07
-2026-09-11  34.15
-2026-09-14  34.91
-2026-09-15  33.64
-2026-09-16  33.61
-2026-09-17  33.82
-`,
-    },
-};
+let FUND = null;
+/* Rebuilds the ledger's FUND object from fund.json (account state) and prices.json (daily closes).
+   NAV on each date = ((sum of shares x close) + USD cash) x FX + SGD cash, divided by units outstanding. */
+function hydrate(fund, prices) {
+    const rows = Object.keys(prices.closes || {}).sort().map((d) => ({ date: d, ...prices.closes[d] }));
+    if (!rows.length) throw new Error("prices.json contains no closes");
+    const tickers = fund.instruments.map((i) => i.ticker);
+    const cashAt = (d) => { let c = null; for (const s of fund.cash) if (s.date <= d) c = s; return c || { sgd: 0, usd: 0 }; };
+    const unitsAt = (d) => fund.contributions.filter((c) => c.date <= d).reduce((s, c) => s + c.amount / c.navAtEntry, 0);
+    const sharesAt = (t, d) => fund.trades.filter((x) => x.ticker === t && x.date <= d)
+        .reduce((s, x) => s + (x.side === "SELL" ? -x.shares : x.shares), 0);
+    const firstTrade = {};
+    for (const x of fund.trades) if (!firstTrade[x.ticker] || x.date < firstTrade[x.ticker]) firstTrade[x.ticker] = x.date;
+
+    const lastPx = {}; const nav = []; const cash = []; const fx = []; const px = {};
+    tickers.forEach((t) => (px[t] = []));
+    const inc = cashAt(fund.inceptionDate);
+    nav.push(`${fund.inceptionDate}  ${fund.inceptionNav.toFixed(4)}`);
+    cash.push(`${fund.inceptionDate}  ${(inc.sgd + inc.usd).toFixed(2)}`);
+    for (const r of rows) {
+        for (const t of tickers) if (r[t] != null) lastPx[t] = r[t];
+        if (r.FX == null) throw new Error(`prices.json: no FX on ${r.date}`);
+        const c = cashAt(r.date);
+        let sec = 0;
+        for (const t of tickers) {
+            const sh = sharesAt(t, r.date);
+            if (sh > 0) {
+                if (lastPx[t] == null) throw new Error(`prices.json: no ${t} close on or before ${r.date}`);
+                sec += sh * lastPx[t];
+            }
+            if (firstTrade[t] && r.date >= firstTrade[t] && r[t] != null) px[t].push(`${r.date}  ${r[t]}`);
+        }
+        const units = unitsAt(r.date);
+        nav.push(`${r.date}  ${(((sec + c.usd) * r.FX + c.sgd) / units).toFixed(4)}`);
+        cash.push(`${r.date}  ${(c.sgd + c.usd * r.FX).toFixed(2)}`);
+        fx.push(`${r.date}  ${r.FX.toFixed(5)}`);
+    }
+    const last = rows[rows.length - 1];
+    const lastCash = cashAt(last.date);
+    const holdings = fund.instruments.map((i) => {
+        const buys = fund.trades.filter((x) => x.ticker === i.ticker && x.side !== "SELL");
+        const bought = buys.reduce((s, x) => s + x.shares, 0);
+        const cost = buys.reduce((s, x) => s + x.shares * x.price + (x.commission || 0), 0);
+        return { ticker: i.ticker, name: i.name, exchange: i.exchange, target: i.target, yahoo: i.yahoo,
+                 shares: sharesAt(i.ticker, last.date), avgCost: bought ? cost / bought : 0, price: lastPx[i.ticker] };
+    }).filter((h) => h.shares > 0);
+    const priceDaily = {}; tickers.forEach((t) => (priceDaily[t] = "\n" + px[t].join("\n") + "\n"));
+    return {
+        name: fund.name, currency: fund.currency, inceptionNav: fund.inceptionNav,
+        pricedAsOf: last.date, fxRate: last.FX, cashSGD: lastCash.sgd, cashUSD: lastCash.usd,
+        pricesUpdated: prices.updated, lastSource: last.src || "",
+        holdings, conversions: fund.conversions, contributions: fund.contributions, trades: fund.trades,
+        navDaily: "\n" + nav.join("\n") + "\n", cashDaily: "\n" + cash.join("\n") + "\n",
+        fxDaily: "\n" + fx.join("\n") + "\n", priceDaily,
+    };
+}
+
 /* ═══════════ nothing below here needs editing ═══════════ */
 const money = (n) => (n < 0 ? "−" : "") +
     "S$" +
@@ -345,6 +117,9 @@ const usd = (n) => (n < 0 ? "−" : "") +
     Math.abs(n).toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const plain = (n, dp = 2) => n.toLocaleString("en-SG", { minimumFractionDigits: dp, maximumFractionDigits: dp });
 const pct = (n, dp = 2) => (n >= 0 ? "+" : "−") + Math.abs(n * 100).toFixed(dp) + "%";
+const wpct = (n, dp = 1) => (n * 100).toFixed(dp) + "%";
+const DECK_PDF = "deck/Global_Compounder.pdf";
+const DECK_SLIDES = Array.from({ length: 21 }, (_, i) => String(i + 1).padStart(2, "0"));
 const shortDate = (s) => new Date(s + "T00:00:00").toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "2-digit" });
 const longDate = (s) => new Date(s + "T00:00:00").toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "numeric" });
 function parseSeries(block) {
@@ -436,11 +211,15 @@ function build() {
     }
     const enriched = daily.map((p, i) => {
         const unitsThen = lots.filter((l) => l.date <= p.date).reduce((s, l) => s + l.units, 0);
+        const netInThen = lots.filter((l) => l.date <= p.date).reduce((s, l) => s + l.amount, 0);
         const prev = i > 0 ? daily[i - 1].value : null;
         return {
             ...p,
             nav: p.value,
             units: unitsThen,
+            netIn: netInThen,
+            profit: unitsThen * p.value - netInThen,
+            ret: netInThen > 0 ? (unitsThen * p.value) / netInThen - 1 : 0,
             fundValue: unitsThen * p.value,
             dayChange: prev ? p.value / prev - 1 : null,
             cumulative: FUND.inceptionNav ? p.value / FUND.inceptionNav - 1 : 0,
@@ -695,7 +474,7 @@ function FundLedger() {
     })
         .sort((a, b) => b.units - a.units);
     const profit = B.fundValue - B.netIn;
-    const fundReturn = FUND.inceptionNav ? B.nav / FUND.inceptionNav - 1 : 0;
+    const fundReturn = B.netIn ? profit / B.netIn : 0;
     const focused = focus ? roster.find((r) => r.person === focus) : null;
     const held = ticker ? B.holdings.find((h) => h.ticker === ticker) : null;
     const investorDaily = useMemo(() => {
@@ -719,7 +498,7 @@ function FundLedger() {
         React.createElement("header", { className: "fl-head" },
             React.createElement("h1", { className: "fl-title" }, FUND.name),
             React.createElement("div", { className: "fl-plbox" },
-                React.createElement("div", { className: "fl-pllabel" }, "Profit since inception"),
+                React.createElement("div", { className: "fl-pllabel" }, "Profit on capital invested"),
                 React.createElement("div", { className: "fl-plvalue " + (profit >= 0 ? "pos" : "neg") }, money(profit)),
                 React.createElement("div", { className: "fl-pldelta " + (fundReturn >= 0 ? "pos" : "neg") }, pct(fundReturn)))),
         React.createElement("div", { className: "fl-strip" },
@@ -728,12 +507,13 @@ function FundLedger() {
             React.createElement(Stat, { label: "NAV per unit", value: plain(B.nav, 4) }),
             React.createElement(Stat, { label: "Units outstanding", value: plain(B.unitsOut, 4) }),
             React.createElement(Stat, { label: "Cash", value: money(FUND.cashSGD + FUND.cashUSD * B.fx) })),
-        React.createElement(SeriesChart, { points: B.daily.map((p) => ({ date: p.date, value: p.value })), baseline: FUND.inceptionNav, baselineLabel: `inception ${plain(FUND.inceptionNav, 4)}`, title: "NAV per unit", dp: 4, idleRight: `max drawdown ${pct(B.maxDD)}`, refValue: FUND.inceptionNav }),
+        React.createElement(SeriesChart, { points: B.daily.map((p) => ({ date: p.date, value: p.ret })), zeroLine: true, baselineLabel: `dashed line = break-even \u00B7 NAV max drawdown ${pct(B.maxDD)}`, title: "Return on capital invested", idleRight: `profit ${money(profit)}  ${pct(fundReturn)}`, hoverExtra: (i, p) => `${shortDate(p.date)}  ${pct(p.value)}  ${money(B.daily[i].profit)}  nav ${plain(B.daily[i].nav, 4)}` }),
         React.createElement("nav", { className: "fl-tabs" },
             [
                 ["ownership", "Ownership"],
                 ["holdings", "Holdings"],
                 ["trades", "Trades"],
+                ["deck", "Strategy deck"],
             ].map(([k, label]) => (React.createElement("button", { key: k, className: "fl-tab " + (tab === k ? "on" : ""), onClick: () => goTab(k) }, label))),
             React.createElement("span", { className: "fl-tabspacer" }),
             React.createElement("button", { className: "fl-export", onClick: () => exportWorkbook(B, roster) }, "Export to Excel")),
@@ -817,15 +597,25 @@ function FundLedger() {
             React.createElement("button", { className: "fl-back", onClick: () => setTicker(null) }, "\u2190 All holdings"),
             React.createElement("div", { className: "fl-detailhead" },
                 React.createElement("h2", { className: "fl-detailname" }, held.ticker),
+                held.name && React.createElement("div", { className: "fl-detailsub" },
+                    held.name,
+                    held.exchange ? React.createElement("span", { className: "fl-detailven" }, held.exchange) : null,
+                    held.yahoo ? React.createElement("a", { className: "fl-detaillink", href: "https://finance.yahoo.com/quote/" + encodeURIComponent(held.yahoo) + "/", target: "_blank", rel: "noopener" }, "check on Yahoo: " + held.yahoo) : null),
                 React.createElement("div", { className: "fl-detailstats" },
                     React.createElement(Stat, { label: "Shares", value: plain(held.shares, 4) }),
                     React.createElement(Stat, { label: "Avg cost", value: usd(held.avgCost) }),
                     React.createElement(Stat, { label: "Price", value: usd(held.price) }),
                     React.createElement(Stat, { label: "Value", value: usd(held.valueUsd) }),
                     React.createElement(Stat, { label: "Profit", value: usd(held.plUsd), sub: pct(held.roi), tone: held.plUsd >= 0 ? "pos" : "neg" }),
-                    React.createElement(Stat, { label: "Value SGD", value: money(held.valueSgd) }))),
-            React.createElement(SeriesChart, { points: (B.prices[held.ticker] || []).map((p) => ({ date: p.date, value: p.value })), baseline: held.avgCost, baselineLabel: `avg cost ${plain(held.avgCost, 2)}`, title: `${held.ticker} close · USD`, dp: 2, idleRight: `vs avg cost ${pct(held.roi)}`, refValue: held.avgCost, markers: B.trades.filter((t) => t.ticker === held.ticker) }),
+                    React.createElement(Stat, { label: "Value SGD", value: money(held.valueSgd) }),
+                    held.target != null && React.createElement(Stat, { label: "Weight of securities", value: wpct(B.securitiesUsd ? held.valueUsd / B.securitiesUsd : 0), sub: "target " + wpct(held.target) }))),
+            React.createElement(SeriesChart, { points: (B.prices[held.ticker] || []).map((p) => ({ date: p.date, value: p.value })), baseline: held.avgCost, baselineLabel: `avg cost ${plain(held.avgCost, 2)}`, title: `${held.name || held.ticker} · close USD`, dp: 2, idleRight: `vs avg cost ${pct(held.roi)}`, refValue: held.avgCost, markers: B.trades.filter((t) => t.ticker === held.ticker) }),
             React.createElement(TradeTable, { trades: B.trades.filter((t) => t.ticker === held.ticker) }))),
+        tab === "deck" && (React.createElement("section", { className: "fl-deck" },
+            React.createElement("div", { className: "fl-decknote" },
+                "The strategy document behind this fund \u00B7 21 slides \u00B7 ",
+                React.createElement("a", { href: DECK_PDF, target: "_blank", rel: "noopener" }, "open PDF")),
+            DECK_SLIDES.map((n) => (React.createElement("img", { key: n, className: "fl-slide", src: `deck/s-${n}.jpg`, alt: `Slide ${Number(n)}`, width: 1400, height: 788, loading: n === "01" || n === "02" ? "eager" : "lazy", decoding: "async" }))))),
         tab === "trades" && (React.createElement("section", null,
             React.createElement("div", { className: "fl-seg" },
                 React.createElement("button", { className: "fl-segbtn " + (tradeView === "stock" ? "on" : ""), onClick: () => setTradeView("stock") }, "Stock trades"),
@@ -864,10 +654,13 @@ function FundLedger() {
             " \u00B7 ",
             FUND.currency,
             " \u00B7 USD/SGD ",
-            plain(B.fx, 4))));
+            plain(B.fx, 4),
+            " \u00B7 closes from ",
+            FUND.lastSource === "yahoo" ? "Yahoo Finance" : FUND.lastSource === "ibkr" ? "IBKR" : "\u2014",
+            ", updated each trading day after the New York close")));
 }
 /* ---------------- chart ---------------- */
-function SeriesChart({ points, baseline, baselineLabel, title, dp = 2, idleRight, refValue, markers = [], secondary, hoverExtra, }) {
+function SeriesChart({ points, baseline, baselineLabel, title, dp = 2, idleRight, refValue, markers = [], secondary, hoverExtra, zeroLine = false, }) {
     const [hover, setHover] = useState(null);
     const boxRef = useRef(null);
     if (!points || points.length < 2)
@@ -878,8 +671,8 @@ function SeriesChart({ points, baseline, baselineLabel, title, dp = 2, idleRight
     const values = points.map((p) => p.value);
     const secVals = secondary ? secondary.map((p) => p.value) : [];
     const all = [...values, ...secVals];
-    const lo = Math.min(...all, baseline || Infinity);
-    const hi = Math.max(...all, baseline || -Infinity);
+    const lo = Math.min(...all, baseline || Infinity, zeroLine ? 0 : Infinity);
+    const hi = Math.max(...all, baseline || -Infinity, zeroLine ? 0 : -Infinity);
     const pad = (hi - lo) * 0.12 || hi * 0.02 || 1;
     const min = lo - pad;
     const max = hi + pad;
@@ -938,6 +731,7 @@ function SeriesChart({ points, baseline, baselineLabel, title, dp = 2, idleRight
                         React.createElement("stop", { offset: "100%", stopColor: stroke, stopOpacity: "0" }))),
                 ticks.map((t) => (React.createElement("line", { key: t.date, x1: fx(t.i), y1: "0", x2: fx(t.i), y2: H, stroke: "#EDF0EC", strokeWidth: "1", vectorEffect: "non-scaling-stroke" }))),
                 baseline > 0 && (React.createElement("line", { x1: "0", y1: fy(baseline), x2: W, y2: fy(baseline), stroke: "#C9D4CB", strokeWidth: "1", strokeDasharray: "4 4", vectorEffect: "non-scaling-stroke" })),
+                zeroLine && (React.createElement("line", { x1: "0", y1: fy(0), x2: W, y2: fy(0), stroke: "#C9D4CB", strokeWidth: "1", strokeDasharray: "4 4", vectorEffect: "non-scaling-stroke" })),
                 React.createElement("path", { d: area, fill: `url(#${gid})` }),
                 secLine && (React.createElement("path", { d: secLine, fill: "none", stroke: "#6C7C86", strokeWidth: "1.25", strokeDasharray: "5 4", vectorEffect: "non-scaling-stroke" })),
                 React.createElement("path", { d: line, fill: "none", stroke: stroke, strokeWidth: "2", vectorEffect: "non-scaling-stroke", strokeLinejoin: "round" })),
@@ -1056,6 +850,12 @@ function Styles() {
 .fl-tab:hover{color:var(--ink)}
 .fl-tab.on{color:var(--ink);border-bottom-color:var(--ink)}
 .fl-tabspacer{flex:1;min-width:8px}
+.fl-deck{margin-top:16px}
+.fl-decknote{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.04em;
+  color:var(--muted);margin:0 0 12px;line-height:1.6}
+.fl-decknote a{color:var(--ink);text-underline-offset:2px}
+.fl-slide{display:block;width:100%;height:auto;margin:0 0 12px;border:1px solid var(--rule);
+  background:#fff;aspect-ratio:1400/788}
 .fl-export{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.11em;text-transform:uppercase;
   background:transparent;border:1px solid var(--rule);color:var(--ink2);padding:6px 12px;
   cursor:pointer;margin-bottom:6px}
@@ -1092,7 +892,13 @@ function Styles() {
   font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer}
 .fl-back:hover{color:var(--ink)}
 .fl-detailhead{margin-top:12px;border-top:2px solid var(--ink);padding-top:12px}
-.fl-detailname{font-family:'IBM Plex Serif',Georgia,serif;font-weight:600;font-size:25px;margin:0 0 11px}
+.fl-detailname{font-family:'IBM Plex Serif',Georgia,serif;font-weight:600;font-size:25px;margin:0 0 3px}
+.fl-detailsub{font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:13px;color:var(--muted);
+  margin:0 0 11px;line-height:1.45}
+.fl-detaillink{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:10px;
+  letter-spacing:.05em;color:var(--muted);margin-left:8px;text-underline-offset:2px}
+.fl-detailven{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--muted);margin-left:8px;white-space:nowrap}
 .fl-detailstats{display:flex;flex-wrap:wrap;border:1px solid var(--rule)}
 
 .fl-tablewrap{overflow-x:auto;margin-top:18px;border:1px solid var(--rule)}
@@ -1128,19 +934,25 @@ function Styles() {
 }
 
 var _m = document.getElementById("root");
-try {
-  if (!window.React || !window.ReactDOM) {
-    _m.innerHTML = '<div id="boot">Could not load React from the CDN. Check your connection or any content blocker, then reload.</div>';
-  } else if (ReactDOM.createRoot) {
-    ReactDOM.createRoot(_m).render(React.createElement(FundLedger));
-  } else {
-    ReactDOM.render(React.createElement(FundLedger), _m);
-  }
-} catch (err) {
-  _m.innerHTML = '<div id="boot">LEDGER FAILED TO RENDER<br><br>' + String(err && err.message ? err.message : err) + '</div>';
+function _fail(msg) { _m.innerHTML = '<div id="boot">LEDGER FAILED TO LOAD<br><br>' + msg + '</div>'; }
+if (!window.React || !window.ReactDOM) {
+    _fail("Could not load React from the CDN. Check your connection or any content blocker, then reload.");
+} else {
+    Promise.all(["fund.json", "prices.json"].map(function (f) {
+        return fetch(f, { cache: "no-cache" }).then(function (r) {
+            if (!r.ok) throw new Error(f + " could not be loaded (HTTP " + r.status + ")");
+            return r.json();
+        });
+    })).then(function (d) {
+        FUND = hydrate(d[0], d[1]);
+        if (ReactDOM.createRoot) ReactDOM.createRoot(_m).render(React.createElement(FundLedger));
+        else ReactDOM.render(React.createElement(FundLedger), _m);
+    }).catch(function (err) {
+        _fail(String(err && err.message ? err.message : err) + (location.protocol === "file:"
+            ? "<br><br>This page was opened as a local file, and browsers block it from reading fund.json that way. Open the GitHub Pages address instead."
+            : ""));
+    });
 }
-
-
 </script>
 </body>
 </html>

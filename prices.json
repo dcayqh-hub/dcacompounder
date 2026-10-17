@@ -1,0 +1,235 @@
+{
+ "_readme": "Daily closes in USD per share; FX is SGD per 1 USD. Rows with src=ibkr were seeded from Interactive Brokers and reconciled by hand. Rows with src=yahoo are appended automatically every trading day by scripts/update_prices.py. Append-only: existing rows are never rewritten.",
+ "updated": "2026-09-17T00:00:00Z",
+ "closes": {
+  "2026-08-17": {
+   "IWDA": 149.11,
+   "EQQS": 94.48,
+   "IGLN": 85.7925,
+   "EIMI": 55.59,
+   "IWVL": 82.59,
+   "FX": 1.277825,
+   "src": "ibkr"
+  },
+  "2026-08-18": {
+   "IWDA": 147.56,
+   "EQQS": 92.485,
+   "IGLN": 84.5625,
+   "EIMI": 53.71,
+   "IWVL": 80.89,
+   "FX": 1.27825,
+   "src": "ibkr"
+  },
+  "2026-08-19": {
+   "IWDA": 148.12,
+   "EQQS": 92.57,
+   "IGLN": 87.01,
+   "EIMI": 54.26,
+   "IWVL": 81.18,
+   "BTC": 30.27,
+   "FX": 1.27125,
+   "src": "ibkr"
+  },
+  "2026-08-20": {
+   "IWDA": 147.39,
+   "EQQS": 91.765,
+   "IGLN": 87.745,
+   "EIMI": 54.47,
+   "IWVL": 81.36,
+   "BTC": 32.15,
+   "FX": 1.272125,
+   "src": "ibkr"
+  },
+  "2026-08-21": {
+   "IWDA": 147.71,
+   "EQQS": 91.86,
+   "IGLN": 89.3725,
+   "EIMI": 55.06,
+   "IWVL": 81.99,
+   "BTC": 34.08,
+   "FX": 1.26945,
+   "src": "ibkr"
+  },
+  "2026-08-24": {
+   "IWDA": 147.31,
+   "EQQS": 91.105,
+   "IGLN": 90.6475,
+   "EIMI": 54.2,
+   "IWVL": 81.08,
+   "BTC": 34.84,
+   "FX": 1.27055,
+   "src": "ibkr"
+  },
+  "2026-08-25": {
+   "IWDA": 147.68,
+   "EQQS": 91.6,
+   "IGLN": 90.17,
+   "EIMI": 55.04,
+   "IWVL": 81.56,
+   "BTC": 34.92,
+   "FX": 1.269275,
+   "src": "ibkr"
+  },
+  "2026-08-26": {
+   "IWDA": 147.6,
+   "EQQS": 91.48,
+   "IGLN": 89.21,
+   "EIMI": 55.19,
+   "IWVL": 81.6,
+   "BTC": 34.71,
+   "FX": 1.27185,
+   "src": "ibkr"
+  },
+  "2026-08-27": {
+   "IWDA": 148.15,
+   "EQQS": 92.6,
+   "IGLN": 89.175,
+   "EIMI": 55.38,
+   "IWVL": 81.3,
+   "BTC": 35.34,
+   "FX": 1.271275,
+   "src": "ibkr"
+  },
+  "2026-08-28": {
+   "IWDA": 147.28,
+   "EQQS": 93.23,
+   "IGLN": 88.425,
+   "EIMI": 55.03,
+   "IWVL": 81.79,
+   "BTC": 34.3,
+   "FX": 1.274575,
+   "src": "ibkr"
+  },
+  "2026-09-01": {
+   "IWDA": 146.74,
+   "EQQS": 91.53,
+   "IGLN": 84.6075,
+   "EIMI": 55.28,
+   "IWVL": 81.7,
+   "BTC": 34.88,
+   "FX": 1.2734,
+   "src": "ibkr"
+  },
+  "2026-09-02": {
+   "IWDA": 147.02,
+   "EQQS": 91.39,
+   "IGLN": 84.7975,
+   "EIMI": 55.07,
+   "IWVL": 81.64,
+   "BTC": 34.17,
+   "FX": 1.271125,
+   "src": "ibkr"
+  },
+  "2026-09-03": {
+   "IWDA": 148.64,
+   "EQQS": 92.49,
+   "IGLN": 87.355,
+   "EIMI": 55.23,
+   "IWVL": 82.71,
+   "BTC": 36.16,
+   "FX": 1.2673,
+   "src": "ibkr"
+  },
+  "2026-09-04": {
+   "IWDA": 148.09,
+   "EQQS": 92.42,
+   "IGLN": 86.12,
+   "EIMI": 56.04,
+   "IWVL": 83.19,
+   "BTC": 35.31,
+   "FX": 1.26685,
+   "src": "ibkr"
+  },
+  "2026-09-07": {
+   "IWDA": 148.05,
+   "EQQS": 92.68,
+   "IGLN": 85.6,
+   "EIMI": 56.3,
+   "IWVL": 83.72,
+   "BTC": 35.31,
+   "FX": 1.266325,
+   "src": "ibkr",
+   "note": "US Labor Day: BTC carries 4 Sep close"
+  },
+  "2026-09-08": {
+   "IWDA": 147.87,
+   "EQQS": 92.79,
+   "IGLN": 85.415,
+   "EIMI": 56.45,
+   "IWVL": 83.24,
+   "BTC": 34.68,
+   "FX": 1.265025,
+   "src": "ibkr"
+  },
+  "2026-09-09": {
+   "IWDA": 146.56,
+   "EQQS": 92.115,
+   "IGLN": 85.38,
+   "EIMI": 56.17,
+   "IWVL": 82.76,
+   "BTC": 34.59,
+   "FX": 1.26425,
+   "src": "ibkr"
+  },
+  "2026-09-10": {
+   "IWDA": 145.83,
+   "EQQS": 91.67,
+   "IGLN": 84.7625,
+   "EIMI": 55.21,
+   "IWVL": 82.06,
+   "BTC": 34.07,
+   "FX": 1.268075,
+   "src": "ibkr"
+  },
+  "2026-09-11": {
+   "IWDA": 146.96,
+   "EQQS": 92.43,
+   "IGLN": 84.83,
+   "EIMI": 55.71,
+   "IWVL": 82.85,
+   "BTC": 34.15,
+   "FX": 1.2668,
+   "src": "ibkr"
+  },
+  "2026-09-14": {
+   "IWDA": 145.96,
+   "EQQS": 91.43,
+   "IGLN": 83.305,
+   "EIMI": 54.28,
+   "IWVL": 81.91,
+   "BTC": 34.91,
+   "FX": 1.2703,
+   "src": "ibkr"
+  },
+  "2026-09-15": {
+   "IWDA": 145.21,
+   "EQQS": 90.915,
+   "IGLN": 83.0975,
+   "EIMI": 53.89,
+   "IWVL": 81.76,
+   "BTC": 33.64,
+   "FX": 1.272875,
+   "src": "ibkr"
+  },
+  "2026-09-16": {
+   "IWDA": 145.89,
+   "EQQS": 91.53,
+   "IGLN": 84.34,
+   "EIMI": 54.43,
+   "IWVL": 81.81,
+   "BTC": 33.61,
+   "FX": 1.2777,
+   "src": "ibkr"
+  },
+  "2026-09-17": {
+   "IWDA": 146.22,
+   "EQQS": 92.26,
+   "IGLN": 84.5475,
+   "EIMI": 54.86,
+   "IWVL": 82.44,
+   "BTC": 33.82,
+   "FX": 1.2754,
+   "src": "ibkr"
+  }
+ }
+}
