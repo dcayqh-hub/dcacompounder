@@ -304,6 +304,24 @@
    "shares": 24.202,
    "price": 35.4102,
    "commission": 0
+  },
+  {
+   "date": "2026-10-19",
+   "ticker": "IWVL",
+   "side": "SELL",
+   "shares": 76.75,
+   "price": 78.92,
+   "commission": 4.36,
+   "note": "Correction leg 1 of 2: unwinds the mis-tickered 15 Oct IWVL buy. Realised -US$117.99 (IBKR FIFO)."
+  },
+  {
+   "date": "2026-10-20",
+   "ticker": "IWDA",
+   "side": "BUY",
+   "shares": 40.8256,
+   "price": 147.04,
+   "commission": 4.36,
+   "note": "Correction leg 2 of 2: the IWDA 35% leg the 15 Oct order should have bought."
   }
  ],
  "cash": [
@@ -348,6 +366,18 @@
    "sgd": 388.87,
    "usd": 305.78,
    "note": "Q S$18,000 + J S$4,000 landed 15 Oct, converted and deployed same day. US$0.15 below the trade-derived 305.93 — market-data snapshot fees, same as 3 Sep."
+  },
+  {
+   "date": "2026-10-19",
+   "sgd": 388.87,
+   "usd": 6358.53,
+   "note": "Intraday state: IWVL sold, IWDA not yet bought. 305.78 + 6057.11 - 4.36 commission."
+  },
+  {
+   "date": "2026-10-20",
+   "sgd": 388.87,
+   "usd": 351.17,
+   "note": "After the two correction trades. Reconciles exactly: 305.78 + 6057.11 sell - 6003.00 buy - 8.72 commission = 351.17."
   }
  ]
 }
