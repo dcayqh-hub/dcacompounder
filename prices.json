@@ -1,6 +1,6 @@
 {
  "_readme": "Daily closes in USD per share; FX is SGD per 1 USD. Rows with src=ibkr were seeded from Interactive Brokers and reconciled by hand. Rows with src=yahoo are appended automatically every trading day by scripts/update_prices.py. Append-only: existing rows are never rewritten.",
- "updated": "2026-11-21T10:07:08Z",
+ "updated": "2026-11-24T12:51:59Z",
  "closes": {
   "2026-08-17": {
    "IWDA": 149.11,
@@ -689,6 +689,16 @@
    "IWVL": 71.230003,
    "BTC": 25.780001,
    "FX": 1.29155,
+   "src": "yahoo"
+  },
+  "2026-11-23": {
+   "IWDA": 138.059998,
+   "EQQS": 84.096001,
+   "IGLN": 71.2425,
+   "EIMI": 47.700001,
+   "IWVL": 73.190002,
+   "BTC": 27.040001,
+   "FX": 1.28954,
    "src": "yahoo"
   }
  }
