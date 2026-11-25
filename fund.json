@@ -122,6 +122,20 @@
    "amount": 18000,
    "navAtEntry": 9.9002,
    "note": "Top-up"
+  },
+  {
+   "date": "2026-11-17",
+   "person": "J",
+   "amount": 6000,
+   "navAtEntry": 9.3919,
+   "note": "Monthly (raised from S$4,000)"
+  },
+  {
+   "date": "2026-11-17",
+   "person": "Q",
+   "amount": 18000,
+   "navAtEntry": 9.3919,
+   "note": "Top-up"
   }
  ],
  "conversions": [
@@ -148,6 +162,12 @@
    "sgd": 22002.8,
    "usd": 17147.31,
    "rate": 1.283
+  },
+  {
+   "date": "2026-11-17",
+   "sgd": 24002.56,
+   "usd": 18629.77,
+   "rate": 1.28826
   }
  ],
  "trades": [
@@ -322,6 +342,54 @@
    "price": 147.04,
    "commission": 4.36,
    "note": "Correction leg 2 of 2: the IWDA 35% leg the 15 Oct order should have bought."
+  },
+  {
+   "date": "2026-11-18",
+   "ticker": "IWDA",
+   "side": "BUY",
+   "shares": 46.5381,
+   "price": 140.1,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-11-18",
+   "ticker": "EQQS",
+   "side": "BUY",
+   "shares": 43.717,
+   "price": 85.23,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-11-18",
+   "ticker": "IGLN",
+   "side": "BUY",
+   "shares": 50.9714,
+   "price": 73.0997,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-11-18",
+   "ticker": "IWVL",
+   "side": "BUY",
+   "shares": 24.7805,
+   "price": 75.18,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-11-18",
+   "ticker": "EIMI",
+   "side": "BUY",
+   "shares": 38.9179,
+   "price": 47.87,
+   "commission": 4.36
+  },
+  {
+   "date": "2026-11-18",
+   "ticker": "BTC",
+   "side": "BUY",
+   "shares": 33.0613,
+   "price": 28.19,
+   "commission": 0
   }
  ],
  "cash": [
@@ -378,6 +446,18 @@
    "sgd": 388.87,
    "usd": 351.17,
    "note": "After the two correction trades. Reconciles exactly: 305.78 + 6057.11 sell - 6003.00 buy - 8.72 commission = 351.17."
+  },
+  {
+   "date": "2026-11-17",
+   "sgd": 386.31,
+   "usd": 18980.94,
+   "note": "Q S$18,000 + J S$6,000 landed and converted same day; not yet deployed."
+  },
+  {
+   "date": "2026-11-18",
+   "sgd": 386.08,
+   "usd": 328.87,
+   "note": "After the six buys. IBKR actual. Trade-derived figures are SGD 386.31 / USD 329.16, so SGD 0.23 and USD 0.29 are unexplained - small fees, see open items."
   }
  ]
 }
